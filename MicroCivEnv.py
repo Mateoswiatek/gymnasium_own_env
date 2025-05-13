@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Tuple, Any
 import pygame
 import random
 from enum import Enum
+import sys
 
 from enums import ResourceType, ActionType, TileType, BuildingType, UnitType
 from main import Player, City, Unit
@@ -31,11 +32,9 @@ class MicroCivEnv(gym.Env):
             ActionType.BUILD_FARM: {ResourceType.WOOD: 10},
             ActionType.BUILD_MINE: {ResourceType.WOOD: 15, ResourceType.STONE: 5},
             ActionType.BUILD_LUMBERMILL: {ResourceType.WOOD: 10},
-
             ActionType.CREATE_SETTLER: {ResourceType.FOOD: 30, ResourceType.GOLD: 10},
             ActionType.CREATE_WARRIOR: {ResourceType.FOOD: 20, ResourceType.WOOD: 10, ResourceType.GOLD: 5},
             ActionType.CREATE_WORKER: {ResourceType.FOOD: 20, ResourceType.GOLD: 5},
-
             ActionType.BUILD_HOUSE: {ResourceType.WOOD: 10, ResourceType.STONE: 5},
             ActionType.BUILD_GRANARY: {ResourceType.WOOD: 15, ResourceType.STONE: 10},
             ActionType.BUILD_BARRACKS: {ResourceType.WOOD: 20, ResourceType.STONE: 15},
@@ -58,7 +57,7 @@ class MicroCivEnv(gym.Env):
         self.building_production = {
             BuildingType.HOUSE: {ResourceType.FOOD: 1},
             BuildingType.GRANARY: {ResourceType.FOOD: 3},
-            BuildingType.BARRACKS: {},  # Barracks don't produce resources directly
+            BuildingType.BARRACKS: {}, # Barracks don't produce resources directly
             BuildingType.MARKET: {ResourceType.GOLD: 3},
         }
 
@@ -91,7 +90,7 @@ class MicroCivEnv(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
-        # Inicjalizacja pygame dla renderowania
+        # Pygame initialization
         self.window = None
         self.clock = None
         self.cell_size = 40
@@ -99,7 +98,6 @@ class MicroCivEnv(gym.Env):
         self.selected_unit = None
         self.selected_city = None
 
-        # Kolory dla renderowania
         self.colors = {
             TileType.GRASS: (124, 252, 0),
             TileType.FOREST: (34, 139, 34),
@@ -121,17 +119,10 @@ class MicroCivEnv(gym.Env):
 
     def _generate_map(self):
         # Inicjalizacja mapy z losowymi kafelkami
-        map_height, map_width = self.map_size
-        self.map = np.full((map_height, map_width), TileType.UNEXPLORED.value, dtype=np.int8)
-
-        # Generowanie mapy za pomocą prostego algorytmu
-        # Najpierw wypełniamy mapę trawą
         self.map = np.full(self.map_size, TileType.GRASS.value, dtype=np.int8)
 
-        # Następnie dodajemy lasy, góry i wodę
         for y in range(self.map_size[0]):
             for x in range(self.map_size[1]):
-                # Losujemy kafelek
                 if random.random() < 0.25:
                     self.map[y, x] = TileType.FOREST.value
                 elif random.random() < 0.15:
@@ -139,15 +130,15 @@ class MicroCivEnv(gym.Env):
                 elif random.random() < 0.10:
                     self.map[y, x] = TileType.WATER.value
 
-        # Tworzymy grupy lasów i gór
         self._create_clusters(TileType.FOREST)
         self._create_clusters(TileType.MOUNTAIN)
         self._create_clusters(TileType.WATER)
+        # # Początkowo wszystkie kafelki są niewidoczne dla gracza
+        # self.fog_of_war = np.full(self.map_size, True, dtype=bool)
+        #
+        # return self.map
 
-        # Początkowo wszystkie kafelki są niewidoczne dla gracza
-        self.fog_of_war = np.full(self.map_size, True, dtype=bool)
 
-        return self.map
 
     def _create_clusters(self, tile_type, num_clusters=5, cluster_size=3):
         height, width = self.map_size
@@ -170,31 +161,32 @@ class MicroCivEnv(gym.Env):
                     self.map[y, x] = tile_type.value
 
     def _initialize_players(self):
-        # Tworzenie głównego gracza (indeks 0) i przeciwników AI
-        self.players = []
-
-        # Główny gracz (człowiek)
-        human_player = Player(player_id=0, is_ai=False)
-        self.players.append(human_player)
-
-        # Przeciwnicy AI
+        """
+        Tworzenie głównego gracza oraz przeciwników AI
+        :return:
+        """
+        self.players = [Player(player_id=0, is_ai=False)]
         for i in range(1, self.num_ai_players + 1):
-            ai_player = Player(player_id=i, is_ai=True)
-            self.players.append(ai_player)
+            self.players.append(Player(player_id=i, is_ai=True))
 
         # Umieszczanie początkowych jednostek i miast
         self._place_starting_units()
 
+
     def _place_starting_units(self):
-        # Umieszczanie początkowych jednostek i miast dla każdego gracza
+        """
+        Umieszczanie początkowych jednostek i miast dla każdego gracza.
+        Jeśli jest więcej graczy, to losujemy dla nich pozycję.
+        Nie może być w wodzie, i czy jest wystarczająco daleko od innych graczy.
+        :return:
+        """
         height, width = self.map_size
 
-        # Zapewniamy, że gracze są rozmieszczeni w różnych rogach mapy
         start_positions = [
-            (2, 2),                      # Lewy górny róg
-            (width - 3, height - 3),     # Prawy dolny róg
-            (2, height - 3),             # Lewy dolny róg
-            (width - 3, 2),              # Prawy górny róg
+            (2, 2),
+            (width - 3, height - 3),
+            (2, height - 3),
+            (width - 3, 2)
         ]
 
         for player_idx, player in enumerate(self.players):
@@ -214,12 +206,9 @@ class MicroCivEnv(gym.Env):
                         for other_player in self.players[:player_idx]:
                             for city in other_player.cities:
                                 dist = abs(city.x - pos_x) + abs(city.y - pos_y)
-                                if dist < 5:  # Minimalna odległość między miastami
+                                if dist < 5: # Minimalna odległość między miastami
                                     is_valid = False
                                     break
-                            if not is_valid:
-                                break
-
                         if is_valid:
                             break
 
@@ -265,7 +254,6 @@ class MicroCivEnv(gym.Env):
 
     def _update_visibility(self, player, center_x, center_y, radius=2):
         height, width = self.map_size
-
         for y in range(max(0, center_y - radius), min(height, center_y + radius + 1)):
             for x in range(max(0, center_x - radius), min(width, center_x + radius + 1)):
                 # Obliczamy odległość Manhattan
@@ -277,14 +265,14 @@ class MicroCivEnv(gym.Env):
                         # Kafelki bliżej niż radius są widoczne
                         player.visible_tiles.add((x, y))
 
+
     def _get_observation(self):
         # Pobieramy aktualnego gracza
         current_player = self.players[self.current_player_idx]
 
         # Przygotowujemy obserwację mapy
         height, width = self.map_size
-        map_channels = 1 + (len(self.players)) * 2  # 1 dla mapy + 2 na gracza (jednostki i miasta)
-
+        map_channels = 1 + (len(self.players)) * 2 # 1 dla mapy + 2 na gracza (jednostki i miasta)
         obs_map = np.zeros((height, width, map_channels), dtype=np.uint8)
 
         # Pierwszy kanał to mapa (widoczna dla aktualnego gracza)
@@ -302,15 +290,13 @@ class MicroCivEnv(gym.Env):
         for player_idx, player in enumerate(self.players):
             # Kanał dla jednostek gracza
             unit_channel = 1 + player_idx * 2
-
             # Kanał dla miast gracza
             city_channel = 2 + player_idx * 2
 
             # Umieszczamy jednostki i miasta na mapie, jeśli są widoczne dla aktualnego gracza
             for unit in player.units:
                 if (unit.x, unit.y) in current_player.visible_tiles:
-                    obs_map[unit.y, unit.x, unit_channel] = unit.unit_type.value + 1  # +1 żeby uniknąć 0
-
+                    obs_map[unit.y, unit.x, unit_channel] = unit.unit_type.value + 1
             for city in player.cities:
                 if (city.x, city.y) in current_player.visible_tiles:
                     obs_map[city.y, city.x, city_channel] = 1
@@ -323,20 +309,17 @@ class MicroCivEnv(gym.Env):
         player_features[1] = current_player.resources[ResourceType.WOOD]
         player_features[2] = current_player.resources[ResourceType.STONE]
         player_features[3] = current_player.resources[ResourceType.GOLD]
-
+        #TODO być może dodawać liczbę określonych jednostek a nie ogólną ilość
         # Liczba jednostek (1)
         player_features[4] = len(current_player.units)
-
         # Liczba miast (1)
         player_features[5] = len(current_player.cities)
-
         # Poziom technologii (1)
         player_features[6] = current_player.tech_level
-
         # Numer tury (1)
         player_features[7] = self.turn_number
 
-        # Przygotowujemy maskę dozwolonych akcji
+        # Maska dozwolonych akcji
         valid_actions = self._get_valid_actions()
 
         return {
@@ -363,7 +346,7 @@ class MicroCivEnv(gym.Env):
             # Jeśli jednostka może się poruszać, dodajemy akcje ruchu
             if unit.movement_left > 0:
                 # Sprawdzamy możliwe kierunki ruchu
-                directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]  # góra, dół, lewo, prawo
+                directions = [(0, -1), (0, 1), (-1, 0), (1, 0)] # góra, dół, lewo, prawo
                 action_types = [ActionType.MOVE_UP, ActionType.MOVE_DOWN, ActionType.MOVE_LEFT, ActionType.MOVE_RIGHT]
 
                 for (dx, dy), action_type in zip(directions, action_types):
@@ -376,8 +359,9 @@ class MicroCivEnv(gym.Env):
                             # Sprawdzamy, czy nie ma tam innej jednostki lub miasta innego gracza
                             is_valid = True
 
-                            # Sprawdzamy jednostki
+
                             for player in self.players:
+                                # Sprawdzamy jednostki
                                 for other_unit in player.units:
                                     if other_unit.x == new_x and other_unit.y == new_y:
                                         # Jeśli to jednostka przeciwnika, można przejść tylko wojownikiem
@@ -388,13 +372,10 @@ class MicroCivEnv(gym.Env):
                                             # Jeśli to własna jednostka, nie można się tam ruszyć
                                             is_valid = False
 
-                            # Sprawdzamy miasta
-                            for player in self.players:
-                                if player.player_id != current_player.player_id:
-                                    for city in player.cities:
-                                        if city.x == new_x and city.y == new_y:
-                                            # Nie można przejść na kafelek z miastem przeciwnika
-                                            is_valid = False
+                                # Sprawdzamy miasta
+                                for city in player.cities:
+                                    if city.x == new_x and city.y == new_y and player.player_id != current_player.player_id:
+                                        is_valid = False
 
                             if is_valid:
                                 valid_actions[action_type.value] = 1
@@ -406,22 +387,22 @@ class MicroCivEnv(gym.Env):
                     # Sprawdzamy, czy możemy zbudować miasto na aktualnej pozycji
                     can_build_city = True
 
-                    # Nie możemy budować na wodzie
+                    # Nie możemy budować na wodzie #TODO to można byłoby zdjąć np dla określonych klas / ras
                     if self.map[unit.y, unit.x] == TileType.WATER.value:
                         can_build_city = False
+
 
                     # Sprawdzamy, czy nie ma już miasta w pobliżu
                     for player in self.players:
                         for city in player.cities:
                             dist = abs(city.x - unit.x) + abs(city.y - unit.y)
-                            if dist < 3:  # Minimalna odległość między miastami
+                            if dist < 3: # Minimalna odległość między miastami
                                 can_build_city = False
                                 break
 
                     # Sprawdzamy, czy mamy wystarczające zasoby
                     if not current_player.can_afford(self.costs[ActionType.BUILD_CITY]):
                         can_build_city = False
-
                     if can_build_city:
                         valid_actions[ActionType.BUILD_CITY.value] = 1
 
@@ -430,20 +411,15 @@ class MicroCivEnv(gym.Env):
                     # Sprawdzamy, czy aktualny kafelek to trawa lub las (można budować farmy, kopalnie, tartaki)
                     tile_type = self.map[unit.y, unit.x]
 
-                    if tile_type == TileType.GRASS.value:
-                        # Na trawie można budować farmy
-                        if current_player.can_afford(self.costs[ActionType.BUILD_FARM]):
-                            valid_actions[ActionType.BUILD_FARM.value] = 1
-
-                    elif tile_type == TileType.FOREST.value:
-                        # W lesie można budować tartaki
-                        if current_player.can_afford(self.costs[ActionType.BUILD_LUMBERMILL]):
-                            valid_actions[ActionType.BUILD_LUMBERMILL.value] = 1
-
-                    elif tile_type == TileType.MOUNTAIN.value:
-                        # W górach można budować kopalnie
-                        if current_player.can_afford(self.costs[ActionType.BUILD_MINE]):
-                            valid_actions[ActionType.BUILD_MINE.value] = 1
+                    # Na trawie można budować farmy
+                    if tile_type == TileType.GRASS.value and current_player.can_afford(self.costs[ActionType.BUILD_FARM]):
+                        valid_actions[ActionType.BUILD_FARM.value] = 1
+                    # W lesie można budować tartaki
+                    elif tile_type == TileType.FOREST.value and current_player.can_afford(self.costs[ActionType.BUILD_LUMBERMILL]):
+                        valid_actions[ActionType.BUILD_LUMBERMILL.value] = 1
+                    # W górach można budować kopalnie
+                    elif tile_type == TileType.MOUNTAIN.value and current_player.can_afford(self.costs[ActionType.BUILD_MINE]):
+                        valid_actions[ActionType.BUILD_MINE.value] = 1
 
         # Sprawdzamy, czy mamy wybrane miasto
         if self.selected_city_idx is not None and 0 <= self.selected_city_idx < len(current_player.cities):
@@ -454,26 +430,21 @@ class MicroCivEnv(gym.Env):
                 # Tworzenie jednostek
                 if current_player.can_afford(self.costs[ActionType.CREATE_SETTLER]):
                     valid_actions[ActionType.CREATE_SETTLER.value] = 1
-
                 if current_player.can_afford(self.costs[ActionType.CREATE_WARRIOR]):
                     valid_actions[ActionType.CREATE_WARRIOR.value] = 1
-
                 if current_player.can_afford(self.costs[ActionType.CREATE_WORKER]):
                     valid_actions[ActionType.CREATE_WORKER.value] = 1
 
-                    # Budowa budynków
+                # Budowa budynków
                 if (BuildingType.HOUSE not in city.buildings and
                         current_player.can_afford(self.costs[ActionType.BUILD_HOUSE])):
                     valid_actions[ActionType.BUILD_HOUSE.value] = 1
-
                 if (BuildingType.GRANARY not in city.buildings and
                         current_player.can_afford(self.costs[ActionType.BUILD_GRANARY])):
                     valid_actions[ActionType.BUILD_GRANARY.value] = 1
-
                 if (BuildingType.BARRACKS not in city.buildings and
                         current_player.can_afford(self.costs[ActionType.BUILD_BARRACKS])):
                     valid_actions[ActionType.BUILD_BARRACKS.value] = 1
-
                 if (BuildingType.MARKET not in city.buildings and
                         current_player.can_afford(self.costs[ActionType.BUILD_MARKET])):
                     valid_actions[ActionType.BUILD_MARKET.value] = 1
@@ -484,11 +455,7 @@ class MicroCivEnv(gym.Env):
         """Reset the environment to start a new game."""
         # Inicjalizacja generatora liczb losowych
         super().reset(seed=seed)
-
-        # Generowanie nowej mapy
         self._generate_map()
-
-        # Inicjalizacja graczy
         self._initialize_players()
 
         # Resetowanie zmiennych gry
@@ -510,6 +477,7 @@ class MicroCivEnv(gym.Env):
             self._render_init()
 
         return self._get_observation(), {}
+
 
     def step(self, action):
         """Execute one time step in the environment."""
@@ -536,7 +504,7 @@ class MicroCivEnv(gym.Env):
                 info["action_executed"] = True
             else:
                 # Akcja nie jest dozwolona
-                reward = -1  # Kara za próbę wykonania niedozwolonej akcji
+                reward = -1 # Kara za próbę wykonania niedozwolonej akcji
                 info["action_executed"] = False
                 info["message"] = f"Action {ActionType(action).name} is not valid"
         else:
@@ -557,12 +525,7 @@ class MicroCivEnv(gym.Env):
             self.game_over = True
             info["winner"] = winner
             info["reason"] = "Victory condition met"
-
-            # Przyznajemy nagrodę za zwycięstwo lub karę za przegraną
-            if winner == 0:  # Gracz wygrał
-                reward += 100
-            else:  # Gracz przegrał
-                reward -= 50
+            reward += 100 if winner == 0 else -50 # Przyznajemy nagrodę za zwycięstwo lub karę za przegraną
 
         # Renderujemy grę, jeśli trzeba
         if self.render_mode is not None:
@@ -580,17 +543,13 @@ class MicroCivEnv(gym.Env):
         if action_type == ActionType.END_TURN:
             # Kończymy turę aktualnego gracza
             self._end_turn()
-            reward = 0.1  # Mała nagroda za progres w grze
-
+            reward = 0.1 # Mała nagroda za progres w grze
         elif action_type == ActionType.DO_NOTHING:
-            # Nic nie robimy
-            reward = 0
-
+            reward = 0 # Nic nie robimy
         elif action_type in [ActionType.MOVE_UP, ActionType.MOVE_DOWN, ActionType.MOVE_LEFT, ActionType.MOVE_RIGHT]:
             # Ruch jednostki
             if self.selected_unit_idx is not None:
                 unit = current_player.units[self.selected_unit_idx]
-
                 # Kierunek ruchu
                 dx, dy = 0, 0
                 if action_type == ActionType.MOVE_UP:
@@ -604,7 +563,6 @@ class MicroCivEnv(gym.Env):
 
                 # Nowa pozycja
                 new_x, new_y = unit.x + dx, unit.y + dy
-
                 # Sprawdzamy, czy na nowej pozycji jest jednostka przeciwnika
                 for player in self.players:
                     if player.player_id != current_player.player_id:
@@ -612,9 +570,10 @@ class MicroCivEnv(gym.Env):
                             if enemy_unit.x == new_x and enemy_unit.y == new_y:
                                 # Walka! (tylko wojownik może atakować)
                                 if unit.unit_type == UnitType.WARRIOR:
+                                    #TODO zmienić, aby nie było tak prosto, jakieś hp itp itd?
                                     # Usuwamy jednostkę przeciwnika
                                     player.units.pop(i)
-                                    reward = 5  # Nagroda za pokonanie przeciwnika
+                                    reward = 5 # Nagroda za pokonanie przeciwnika
                                 break
 
                 # Aktualizujemy pozycję jednostki
@@ -623,19 +582,15 @@ class MicroCivEnv(gym.Env):
 
                 # Aktualizujemy widoczność
                 self._update_visibility(current_player, new_x, new_y)
+                reward += 0.1 # Odkrywamy nowe obszary (mała nagroda) #TODO tutaj zmienić, aby uzależnić nagrodę od faktycznie poszerzonej widoczności.
 
-                # Odkrywamy nowe obszary (mała nagroda)
-                reward += 0.1
-
+        # Budowa miasta
         elif action_type == ActionType.BUILD_CITY:
-            # Budowa miasta
             if self.selected_unit_idx is not None:
                 unit = current_player.units[self.selected_unit_idx]
-
                 if unit.unit_type == UnitType.SETTLER:
                     # Pobieramy koszty
                     costs = self.costs[ActionType.BUILD_CITY]
-
                     # Odejmujemy zasoby
                     for resource_type, amount in costs.items():
                         current_player.resources[resource_type] -= amount
@@ -651,74 +606,42 @@ class MicroCivEnv(gym.Env):
                     # Usuwamy osadnika
                     current_player.units.pop(self.selected_unit_idx)
                     self.selected_unit_idx = None
+                    reward = 10 # Duża nagroda za zbudowanie miasta
 
-                    # Duża nagroda za zbudowanie miasta
-                    reward = 10
-
+        # Budowa farmy
         elif action_type == ActionType.BUILD_FARM:
-            # Budowa farmy
             if self.selected_unit_idx is not None:
                 unit = current_player.units[self.selected_unit_idx]
-
                 if unit.unit_type == UnitType.WORKER:
-                    # Pobieramy koszty
                     costs = self.costs[ActionType.BUILD_FARM]
-
-                    # Odejmujemy zasoby
                     for resource_type, amount in costs.items():
                         current_player.resources[resource_type] -= amount
-
-                    # Aktualizujemy mapę
                     self.map[unit.y, unit.x] = TileType.FARM.value
+                    unit.has_acted = True # Zaznaczamy, że jednostka wykonała akcję
+                    reward = 2 # Nagroda za budowę
 
-                    # Zaznaczamy, że jednostka wykonała akcję
-                    unit.has_acted = True
-
-                    # Nagroda za budowę
-                    reward = 2
-
+        # Budowa kopalni
         elif action_type == ActionType.BUILD_MINE:
-            # Budowa kopalni
             if self.selected_unit_idx is not None:
                 unit = current_player.units[self.selected_unit_idx]
-
                 if unit.unit_type == UnitType.WORKER:
-                    # Pobieramy koszty
                     costs = self.costs[ActionType.BUILD_MINE]
-
-                    # Odejmujemy zasoby
                     for resource_type, amount in costs.items():
                         current_player.resources[resource_type] -= amount
-
-                    # Aktualizujemy mapę
                     self.map[unit.y, unit.x] = TileType.MINE.value
-
-                    # Zaznaczamy, że jednostka wykonała akcję
                     unit.has_acted = True
-
-                    # Nagroda za budowę
                     reward = 2
 
+        # Budowa tartaku
         elif action_type == ActionType.BUILD_LUMBERMILL:
-            # Budowa tartaku
             if self.selected_unit_idx is not None:
                 unit = current_player.units[self.selected_unit_idx]
-
                 if unit.unit_type == UnitType.WORKER:
-                    # Pobieramy koszty
                     costs = self.costs[ActionType.BUILD_LUMBERMILL]
-
-                    # Odejmujemy zasoby
                     for resource_type, amount in costs.items():
                         current_player.resources[resource_type] -= amount
-
-                    # Aktualizujemy mapę
                     self.map[unit.y, unit.x] = TileType.LUMBERMILL.value
-
-                    # Zaznaczamy, że jednostka wykonała akcję
                     unit.has_acted = True
-
-                    # Nagroda za budowę
                     reward = 2
 
         # Akcje związane z miastem
@@ -738,7 +661,6 @@ class MicroCivEnv(gym.Env):
 
                 # Pobieramy koszty
                 costs = self.costs[action_type]
-
                 # Odejmujemy zasoby
                 for resource_type, amount in costs.items():
                     current_player.resources[resource_type] -= amount
@@ -768,13 +690,8 @@ class MicroCivEnv(gym.Env):
                             # Tworzymy nową jednostkę
                             unit = Unit(unit_type=unit_type, x=new_x, y=new_y, player_id=current_player.player_id)
                             current_player.add_unit(unit)
-
-                            # Zaznaczamy, że miasto wykonało akcję
-                            city.has_acted = True
-
-                            # Nagroda za stworzenie jednostki
-                            reward = 3
-
+                            city.has_acted = True # Zaznaczamy, że miasto wykonało akcję
+                            reward = 3 # Nagroda za stworzenie jednostki
                             found = True
                             break
 
@@ -782,13 +699,11 @@ class MicroCivEnv(gym.Env):
                     # Nie udało się stworzyć jednostki - zwracamy zasoby
                     for resource_type, amount in costs.items():
                         current_player.resources[resource_type] += amount
+                    reward = -1 # Kara za nieudaną akcję
 
-                    # Kara za nieudaną akcję
-                    reward = -1
-
+        # Budowa budynku w mieście
         elif action_type in [ActionType.BUILD_HOUSE, ActionType.BUILD_GRANARY,
                              ActionType.BUILD_BARRACKS, ActionType.BUILD_MARKET]:
-            # Budowa budynku w mieście
             if self.selected_city_idx is not None:
                 city = current_player.cities[self.selected_city_idx]
 
@@ -812,17 +727,15 @@ class MicroCivEnv(gym.Env):
 
                 # Dodajemy budynek do miasta
                 city.buildings.add(building_type)
-
-                # Zaznaczamy, że miasto wykonało akcję
-                city.has_acted = True
-
-                # Nagroda za budowę budynku
-                reward = 4
+                city.has_acted = True # Zaznaczamy, że miasto wykonało akcję
+                reward = 4 # Nagroda za budowę budynku
 
         return reward
 
+
+    #TODO zamienić to na agentów z Gymnasium.
     def _execute_ai_turn(self, player):
-        """Wykonuje turę dla gracza AI."""
+
         # Prosta strategia AI:
         # 1. Jeśli mamy robotników, budujemy struktury
         # 2. Jeśli mamy osadników, budujemy miasta
@@ -832,36 +745,34 @@ class MicroCivEnv(gym.Env):
         # Najpierw obsługujemy jednostki
         for unit in player.units:
             if unit.unit_type == UnitType.WORKER:
+
                 # Dla robotnika - próbujemy budować struktury
                 tile_type = self.map[unit.y, unit.x]
 
+                # Budujemy farmę
                 if tile_type == TileType.GRASS.value and player.can_afford(self.costs[ActionType.BUILD_FARM]):
-                    # Budujemy farmę
                     for resource_type, amount in self.costs[ActionType.BUILD_FARM].items():
                         player.resources[resource_type] -= amount
                     self.map[unit.y, unit.x] = TileType.FARM.value
                     unit.has_acted = True
-
+                # Budujemy tartak
                 elif tile_type == TileType.FOREST.value and player.can_afford(self.costs[ActionType.BUILD_LUMBERMILL]):
-                    # Budujemy tartak
                     for resource_type, amount in self.costs[ActionType.BUILD_LUMBERMILL].items():
                         player.resources[resource_type] -= amount
                     self.map[unit.y, unit.x] = TileType.LUMBERMILL.value
                     unit.has_acted = True
-
+                # Budujemy kopalnię
                 elif tile_type == TileType.MOUNTAIN.value and player.can_afford(self.costs[ActionType.BUILD_MINE]):
-                    # Budujemy kopalnię
                     for resource_type, amount in self.costs[ActionType.BUILD_MINE].items():
                         player.resources[resource_type] -= amount
                     self.map[unit.y, unit.x] = TileType.MINE.value
                     unit.has_acted = True
-
                 else:
                     # Poruszamy się losowo
                     self._move_unit_randomly(unit, player)
 
+            # Dla osadnika - próbujemy budować miasto
             elif unit.unit_type == UnitType.SETTLER:
-                # Dla osadnika - próbujemy budować miasto
                 # Sprawdzamy, czy możemy zbudować miasto na aktualnej pozycji
                 can_build_city = True
 
@@ -873,7 +784,7 @@ class MicroCivEnv(gym.Env):
                 for other_player in self.players:
                     for city in other_player.cities:
                         dist = abs(city.x - unit.x) + abs(city.y - unit.y)
-                        if dist < 3:  # Minimalna odległość między miastami
+                        if dist < 3: # Minimalna odległość między miastami
                             can_build_city = False
                             break
 
@@ -881,8 +792,8 @@ class MicroCivEnv(gym.Env):
                 if not player.can_afford(self.costs[ActionType.BUILD_CITY]):
                     can_build_city = False
 
+                # Budujemy miasto
                 if can_build_city:
-                    # Budujemy miasto
                     for resource_type, amount in self.costs[ActionType.BUILD_CITY].items():
                         player.resources[resource_type] -= amount
 
@@ -890,33 +801,28 @@ class MicroCivEnv(gym.Env):
                     city = City(x=unit.x, y=unit.y, player_id=player.player_id,
                                 name=f"City {len(player.cities) + 1}")
                     player.add_city(city)
-
                     # Aktualizujemy mapę
                     self.map[unit.y, unit.x] = TileType.CITY.value
-
                     # Usuwamy osadnika
                     player.units.remove(unit)
                 else:
                     # Poruszamy się losowo
                     self._move_unit_randomly(unit, player)
 
+            # Dla wojownika - próbujemy atakować przeciwnika lub poruszać się w jego kierunku
             elif unit.unit_type == UnitType.WARRIOR:
-                # Dla wojownika - próbujemy atakować przeciwnika lub poruszać się w jego kierunku
-                # Najpierw sprawdzamy, czy w pobliżu jest wróg
-                has_moved = False
-
+                has_moved = False # Najpierw sprawdzamy, czy w pobliżu jest wróg
                 for other_player in self.players:
                     if other_player.player_id != player.player_id:
                         for enemy_unit in other_player.units:
                             dist = abs(enemy_unit.x - unit.x) + abs(enemy_unit.y - unit.y)
-
-                            if dist <= 1:  # Jednostka przeciwnika jest obok
+                            if dist <= 1: # Jednostka przeciwnika jest obok
                                 # Atakujemy
                                 other_player.units.remove(enemy_unit)
                                 unit.has_acted = True
                                 has_moved = True
                                 break
-                            elif dist <= 5 and unit.movement_left > 0:  # Jednostka przeciwnika jest niedaleko
+                            elif dist <= 5 and unit.movement_left > 0: # Jednostka przeciwnika jest niedaleko
                                 # Poruszamy się w kierunku wroga
                                 if enemy_unit.x > unit.x and self._can_move_to(unit.x + 1, unit.y):
                                     unit.x += 1
@@ -938,9 +844,8 @@ class MicroCivEnv(gym.Env):
                                 # Aktualizujemy widoczność
                                 self._update_visibility(player, unit.x, unit.y)
                                 break
-
-                        if has_moved:
-                            break
+                    if has_moved:
+                        break
 
                 if not has_moved and unit.movement_left > 0:
                     # Poruszamy się losowo
@@ -950,7 +855,7 @@ class MicroCivEnv(gym.Env):
         for city in player.cities:
             if not city.has_acted:
                 # Priorytetowo tworzymy jednostki
-                if len(player.units) < 10:  # Limit jednostek
+                if len(player.units) < 10: # Limit jednostek
                     # Najpierw próbujemy tworzyć osadników, by rozwijać cywilizację
                     if player.can_afford(self.costs[ActionType.CREATE_SETTLER]) and random.random() < 0.3:
                         self._create_unit_around_city(city, player, UnitType.SETTLER, ActionType.CREATE_SETTLER)
@@ -963,45 +868,42 @@ class MicroCivEnv(gym.Env):
 
                 # Jeśli nie stworzyliśmy jednostki, budujemy budynki
                 if not city.has_acted:
+                    # Budujemy dom
                     if (BuildingType.HOUSE not in city.buildings and
                             player.can_afford(self.costs[ActionType.BUILD_HOUSE])):
-                        # Budujemy dom
                         for resource_type, amount in self.costs[ActionType.BUILD_HOUSE].items():
                             player.resources[resource_type] -= amount
                         city.buildings.add(BuildingType.HOUSE)
                         city.has_acted = True
 
+                    # Budujemy spichlerz
                     elif (BuildingType.GRANARY not in city.buildings and
                           player.can_afford(self.costs[ActionType.BUILD_GRANARY])):
-                        # Budujemy spichlerz
                         for resource_type, amount in self.costs[ActionType.BUILD_GRANARY].items():
                             player.resources[resource_type] -= amount
                         city.buildings.add(BuildingType.GRANARY)
                         city.has_acted = True
 
+                    # Budujemy koszary
                     elif (BuildingType.BARRACKS not in city.buildings and
                           player.can_afford(self.costs[ActionType.BUILD_BARRACKS])):
-                        # Budujemy koszary
                         for resource_type, amount in self.costs[ActionType.BUILD_BARRACKS].items():
                             player.resources[resource_type] -= amount
                         city.buildings.add(BuildingType.BARRACKS)
                         city.has_acted = True
 
+                    # Budujemy targ
                     elif (BuildingType.MARKET not in city.buildings and
                           player.can_afford(self.costs[ActionType.BUILD_MARKET])):
-                        # Budujemy targ
                         for resource_type, amount in self.costs[ActionType.BUILD_MARKET].items():
                             player.resources[resource_type] -= amount
                         city.buildings.add(BuildingType.MARKET)
                         city.has_acted = True
 
-
     def _can_move_to(self, x, y):
         """Sprawdza, czy jednostka może się poruszyć na dane pole."""
-        # Sprawdzamy, czy pole jest na mapie
         if not (0 <= x < self.map_size[1] and 0 <= y < self.map_size[0]):
             return False
-
         # Sprawdzamy, czy pole nie jest wodą
         if self.map[y, x] == TileType.WATER.value:
             return False
@@ -1011,7 +913,6 @@ class MicroCivEnv(gym.Env):
             for unit in player.units:
                 if unit.x == x and unit.y == y:
                     return False
-
         return True
 
     def _move_unit_randomly(self, unit, player):
@@ -1025,7 +926,6 @@ class MicroCivEnv(gym.Env):
 
         for dx, dy in directions:
             new_x, new_y = unit.x + dx, unit.y + dy
-
             if self._can_move_to(new_x, new_y):
                 unit.x, unit.y = new_x, new_y
                 unit.movement_left -= 1
@@ -1046,9 +946,7 @@ class MicroCivEnv(gym.Env):
             # Sprawdzamy, czy pole jest na mapie i nie jest wodą
             if (0 <= new_x < self.map_size[1] and 0 <= new_y < self.map_size[0] and
                     self.map[new_y, new_x] != TileType.WATER.value):
-
-                # Sprawdzamy, czy pole jest wolne
-                is_occupied = False
+                is_occupied = False # Sprawdzamy, czy pole jest wolne
                 for other_player in self.players:
                     for other_unit in other_player.units:
                         if other_unit.x == new_x and other_unit.y == new_y:
@@ -1058,40 +956,31 @@ class MicroCivEnv(gym.Env):
                         break
 
                 if not is_occupied:
-                    # Pobieramy koszty
                     costs = self.costs[action_type]
-
-                    # Odejmujemy zasoby
                     for resource_type, amount in costs.items():
                         player.resources[resource_type] -= amount
-
-                    # Tworzymy nową jednostkę
                     unit = Unit(unit_type=unit_type, x=new_x, y=new_y, player_id=player.player_id)
                     player.add_unit(unit)
-
-                    # Zaznaczamy, że miasto wykonało akcję
-                    city.has_acted = True
+                    city.has_acted = True # Zaznaczamy, że miasto wykonało akcję
                     return True
-
         return False
+
 
     def _end_turn(self):
         """Kończy turę aktualnego gracza i przechodzi do następnego."""
         # Resetujemy akcje jednostek i miast
         current_player = self.players[self.current_player_idx]
-
         for unit in current_player.units:
-            unit.has_acted = False
-            unit.movement_left = unit.max_movement
-
+            unit.reset_turn()
         for city in current_player.cities:
-            city.has_acted = False
+            city.reset_turn()
 
         # Przechodzimy do następnego gracza
         self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
 
-        # Jeśli wróciliśmy do gracza 0, zwiększamy numer tury
+        # Jeśli wróciliśmy do gracza 0,
         if self.current_player_idx == 0:
+            # Zwiększamy numer tury
             self.turn_number += 1
 
             # Aktualizujemy zasoby dla wszystkich graczy
@@ -1103,14 +992,14 @@ class MicroCivEnv(gym.Env):
             # Pobieramy zasoby z kafelków wokół miast
             for city in player.cities:
                 # Zbieramy zasoby z kafelków w zasięgu miasta (promień 2)
+                #TODO zmienić, aby zasięg się zwiększał w zależności od rozwoju miasta / wykrywanie konflików.
                 for dy in range(-2, 3):
                     for dx in range(-2, 3):
                         x, y = city.x + dx, city.y + dy
 
                         # Sprawdzamy, czy kafelek jest na mapie
                         if 0 <= x < self.map_size[1] and 0 <= y < self.map_size[0]:
-                            # Pobieramy typ kafelka
-                            tile_type = TileType(self.map[y, x])
+                            tile_type = TileType(self.map[y, x]) # Pobieramy typ kafelka
 
                             # Dodajemy produkcję z tego kafelka
                             if tile_type in self.tile_production:
@@ -1124,11 +1013,196 @@ class MicroCivEnv(gym.Env):
                             player.resources[resource_type] += amount
 
             # Uwzględniamy koszt utrzymania jednostek (odejmujemy 1 złota za każdą jednostkę)
+            #TODO zmienić, tak aby różne jedostki miały różne koszty utrzymania.
             maintenance_cost = len(player.units)
             player.resources[ResourceType.GOLD] = max(0, player.resources[ResourceType.GOLD] - maintenance_cost)
 
             # Zapewniamy minimalną ilość zasobów (aby gracz nie utknął bez możliwości działania)
+            # TODO to można byłoby zmienić jakoś, np aby jednostki umierały czy coś takiego.
             player.resources[ResourceType.FOOD] = max(5, player.resources[ResourceType.FOOD])
             player.resources[ResourceType.WOOD] = max(5, player.resources[ResourceType.WOOD])
             player.resources[ResourceType.STONE] = max(3, player.resources[ResourceType.STONE])
             player.resources[ResourceType.GOLD] = max(2, player.resources[ResourceType.GOLD])
+
+    def _check_victory(self):
+        """Check victory conditions - control 70% of map or defeat all opponents."""
+        total_tiles = self.map_size[0] * self.map_size[1]
+
+        # Check if any player controls 70% of the map
+        for player in self.players:
+            controlled = player.get_controlled_tiles(self.map_size)
+            if len(controlled) / total_tiles >= 0.7:
+                return player.player_id
+
+        # Check if only one player remains with cities
+        players_with_cities = [p for p in self.players if len(p.cities) > 0]
+        if len(players_with_cities) == 1:
+            return players_with_cities[0].player_id
+
+        return None
+
+    def _render_init(self):
+        """Initialize pygame rendering."""
+        pygame.init()
+        pygame.display.init()
+        self.window = pygame.display.set_mode(
+            (self.map_size[1] * self.cell_size,
+             self.map_size[0] * self.cell_size + 100))  # Extra space for info
+        pygame.display.set_caption("MicroCiv")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont(None, 24)
+
+    def render(self):
+        """Render the game state using pygame."""
+        if self.window is None and self.render_mode == "human":
+            self._render_init()
+
+        canvas = pygame.Surface(
+            (self.map_size[1] * self.cell_size,
+             self.map_size[0] * self.cell_size + 100))
+        canvas.fill((255, 255, 255))
+
+        self._draw_map(canvas)
+        self._draw_units(canvas)
+        self._draw_player_info(canvas)
+
+        if self.render_mode == "human":
+            self.window.blit(canvas, canvas.get_rect())
+            pygame.event.pump()
+            pygame.display.update()
+            self.clock.tick(self.metadata["render_fps"])
+        else:  # rgb_array
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+            )
+
+    def _draw_map(self, canvas):
+        """Draw the game map."""
+        current_player = self.players[self.current_player_idx]
+
+        for y in range(self.map_size[0]):
+            for x in range(self.map_size[1]):
+                if (x, y) in current_player.explored_tiles:
+                    tile_type = TileType(self.map[y, x])
+                    color = self.colors[tile_type]
+                else:
+                    color = self.colors[TileType.UNEXPLORED]
+
+                pygame.draw.rect(
+                    canvas,
+                    color,
+                    pygame.Rect(
+                        x * self.cell_size,
+                        y * self.cell_size,
+                        self.cell_size - 1,
+                        self.cell_size - 1,
+                        ),
+                )
+
+    def _draw_units(self, canvas):
+        """Draw all visible units."""
+        current_player = self.players[self.current_player_idx]
+
+        for player in self.players:
+            for unit in player.units:
+                if (unit.x, unit.y) in current_player.visible_tiles:
+                    color = self.player_colors[player.player_id % len(self.player_colors)]
+                    pygame.draw.circle(
+                        canvas,
+                        color,
+                        (unit.x * self.cell_size + self.cell_size // 2,
+                         unit.y * self.cell_size + self.cell_size // 2),
+                        self.cell_size // 3,
+                        )
+
+                    # Draw unit type indicator
+                    unit_symbol = ""
+                    if unit.unit_type == UnitType.SETTLER:
+                        unit_symbol = "S"
+                    elif unit.unit_type == UnitType.WARRIOR:
+                        unit_symbol = "W"
+                    elif unit.unit_type == UnitType.WORKER:
+                        unit_symbol = "K"
+
+                    text = self.font.render(unit_symbol, True, (255, 255, 255))
+                    canvas.blit(
+                        text,
+                        (unit.x * self.cell_size + self.cell_size // 2 - 5,
+                         unit.y * self.cell_size + self.cell_size // 2 - 8),
+                    )
+
+
+    def _draw_player_info(self, canvas):
+        """Draw player information at the bottom of the screen."""
+        current_player = self.players[self.current_player_idx]
+        y_offset = self.map_size[0] * self.cell_size
+
+        # Draw player resources
+        resources_text = f"Food: {current_player.resources[ResourceType.FOOD]}  " \
+                         f"Wood: {current_player.resources[ResourceType.WOOD]}  " \
+                         f"Stone: {current_player.resources[ResourceType.STONE]}  " \
+                         f"Gold: {current_player.resources[ResourceType.GOLD]}"
+        text = self.font.render(resources_text, True, (0, 0, 0))
+        canvas.blit(text, (10, y_offset + 10))
+
+        # Draw turn and player info
+        turn_text = f"Turn: {self.turn_number}/{self.max_turns} | Player: {current_player.player_id + 1}"
+        text = self.font.render(turn_text, True, (0, 0, 0))
+        canvas.blit(text, (10, y_offset + 40))
+
+        # Draw selected unit/city info
+        if self.selected_unit_idx is not None and 0 <= self.selected_unit_idx < len(current_player.units):
+            unit = current_player.units[self.selected_unit_idx]
+            unit_text = f"Selected: {unit.unit_type.name} at ({unit.x}, {unit.y})"
+            text = self.font.render(unit_text, True, (0, 0, 0))
+            canvas.blit(text, (10, y_offset + 70))
+        elif self.selected_city_idx is not None and 0 <= self.selected_city_idx < len(current_player.cities):
+            city = current_player.cities[self.selected_city_idx]
+            city_text = f"Selected: {city.name} at ({city.x}, {city.y})"
+            text = self.font.render(city_text, True, (0, 0, 0))
+            canvas.blit(text, (10, y_offset + 70))
+
+    def close(self):
+        """Close the environment and pygame window."""
+        if self.window is not None:
+            pygame.display.quit()
+            pygame.quit()
+            self.window = None
+
+    def select_unit(self, x: int, y: int):
+        """Select a unit at the given coordinates."""
+        current_player = self.players[self.current_player_idx]
+        self.selected_unit_idx = None
+        self.selected_city_idx = None
+
+        for i, unit in enumerate(current_player.units):
+            if unit.x == x and unit.y == y:
+                self.selected_unit_idx = i
+                return True
+        return False
+
+    def select_city(self, x: int, y: int):
+        """Select a city at the given coordinates."""
+        current_player = self.players[self.current_player_idx]
+        self.selected_unit_idx = None
+        self.selected_city_idx = None
+
+        for i, city in enumerate(current_player.cities):
+            if city.x == x and city.y == y:
+                self.selected_city_idx = i
+                return True
+        return False
+
+    def process_event(self, event):
+        """Process pygame events for human interaction."""
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            x, y = event.pos[0] // self.cell_size, event.pos[1] // self.cell_size
+            if 0 <= x < self.map_size[1] and 0 <= y < self.map_size[0]:
+                if event.button == 1:  # Left click
+                    if not self.select_unit(x, y):
+                        self.select_city(x, y)
+                elif event.button == 3:  # Right click
+                    self.selected_unit_idx = None
+                    self.selected_city_idx = None
+            return True
+        return False

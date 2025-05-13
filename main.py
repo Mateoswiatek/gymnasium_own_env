@@ -1,5 +1,5 @@
 from enums import UnitType, BuildingType, ResourceType
-from typing import Dict
+from typing import Dict, Set, Tuple
 
 class Unit:
     def __init__(self, unit_type: UnitType, x: int, y: int, player_id: int):
@@ -9,20 +9,31 @@ class Unit:
         self.player_id = player_id
         self.health = 100
         self.movement_left = self._get_max_movement()
+        self.max_movement = self._get_max_movement()
         self.has_acted = False
+        self.attack_strength = self._get_attack_strength()
 
     def _get_max_movement(self) -> int:
-        if self.unit_type == UnitType.SETTLER:
-            return 2
-        elif self.unit_type == UnitType.WARRIOR:
-            return 2
-        elif self.unit_type == UnitType.WORKER:
-            return 2
-        return 1
+        movement_values = {
+            UnitType.SETTLER: 2,
+            UnitType.WARRIOR: 2,
+            UnitType.WORKER: 2
+        }
+        return movement_values.get(self.unit_type, 1)
+
+    def _get_attack_strength(self) -> int:
+        if self.unit_type == UnitType.WARRIOR:
+            return 20
+        return 0
 
     def reset_turn(self):
-        self.movement_left = self._get_max_movement()
+        self.movement_left = self.max_movement
         self.has_acted = False
+
+    def move_to(self, x: int, y: int):
+        self.x = x
+        self.y = y
+        self.movement_left -= 1
 
 
 class City:
@@ -32,17 +43,25 @@ class City:
         self.player_id = player_id
         self.name = name
         self.population = 1
-        self.buildings = []
+        self.buildings: Set[BuildingType] = set()
         self.production_queue = []
         self.health = 100
         self.has_acted = False
+        self.defense_strength = 10
 
     def reset_turn(self):
         self.has_acted = False
 
     def add_building(self, building_type: BuildingType):
-        if building_type not in self.buildings:
-            self.buildings.append(building_type)
+        self.buildings.add(building_type)
+
+    def get_production(self) -> Dict[ResourceType, int]:
+        production = {
+            ResourceType.FOOD: 2,
+            ResourceType.GOLD: 1
+        }
+        return production
+
 
 class Player:
     def __init__(self, player_id: int, is_ai: bool = False):
@@ -63,23 +82,20 @@ class Player:
         self.turn_number = 1
 
     def can_afford(self, costs: Dict[ResourceType, int]) -> bool:
-        for resource_type, cost in costs.items():
-            if self.resources[resource_type] < cost:
-                return False
-        return True
+        return all(self.resources.get(resource, 0) >= amount
+                   for resource, amount in costs.items())
 
     def pay_cost(self, costs: Dict[ResourceType, int]) -> bool:
         if not self.can_afford(costs):
             return False
 
-        for resource_type, cost in costs.items():
-            self.resources[resource_type] -= cost
-
+        for resource, amount in costs.items():
+            self.resources[resource] -= amount
         return True
 
     def add_resources(self, resources: Dict[ResourceType, int]):
-        for resource_type, amount in resources.items():
-            self.resources[resource_type] += amount
+        for resource, amount in resources.items():
+            self.resources[resource] = self.resources.get(resource, 0) + amount
 
     def add_unit(self, unit: Unit):
         self.units.append(unit)
@@ -91,12 +107,22 @@ class Player:
         if unit in self.units:
             self.units.remove(unit)
 
-    def calculate_score(self):
+    def calculate_score(self) -> int:
         city_score = len(self.cities) * 100
         unit_score = len(self.units) * 10
-        resource_score = sum(self.resources.values())
+        resource_score = sum(self.resources.values()) // 10
         tech_score = self.tech_level * 50
-        explored_score = len(self.explored_tiles) * 2
+        explored_score = len(self.explored_tiles) // 10
 
         self.score = city_score + unit_score + resource_score + tech_score + explored_score
         return self.score
+
+    def get_controlled_tiles(self, map_size: Tuple[int, int]) -> Set[Tuple[int, int]]:
+        controlled = set()
+        for city in self.cities:
+            for dy in range(-3, 4):
+                for dx in range(-3, 4):
+                    x, y = city.x + dx, city.y + dy
+                    if 0 <= x < map_size[0] and 0 <= y < map_size[1]:
+                        controlled.add((x, y))
+        return controlled
