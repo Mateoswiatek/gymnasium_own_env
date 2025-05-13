@@ -8,11 +8,18 @@ def main():
 
     running = True
     while running:
+        current_player = env.players[env.current_player_idx]
+
+        # Handle AI turn automatically
+        if current_player.is_ai:
+            env.step(ActionType.END_TURN.value)  # Let AI play its turn
+            continue
+
+        # Human player's turn - process inputs
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-            # Keyboard controls for movement/actions
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -36,6 +43,16 @@ def main():
                     action = ActionType.BUILD_MINE.value
                 elif event.key == pygame.K_l:
                     action = ActionType.BUILD_LUMBERMILL.value
+
+                # City buildings
+                elif event.key == pygame.K_h:
+                    action = ActionType.BUILD_HOUSE.value
+                elif event.key == pygame.K_g:
+                    action = ActionType.BUILD_GRANARY.value
+                elif event.key == pygame.K_r:
+                    action = ActionType.BUILD_BARRACKS.value
+                elif event.key == pygame.K_k:
+                    action = ActionType.BUILD_MARKET.value
 
                 # End turn / Do nothing
                 elif event.key == pygame.K_e or event.key == pygame.K_1:
