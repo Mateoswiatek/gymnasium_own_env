@@ -84,7 +84,7 @@ class MicroCivEnv(gym.Env):
         # Przestrzeń akcji
         # Akcje: ruch w 4 kierunki, budowa 4 typów struktur, tworzenie 3 typów jednostek,
         # budowa 4 typów budynków, koniec tury, nic nie rób
-        self.action_space = spaces.Discrete(len(ActionType))
+        self.action_space = spaces.Discrete(len(ActionType)) # Should be 17 actions
 
         # Ustawienie trybu renderowania
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -329,10 +329,10 @@ class MicroCivEnv(gym.Env):
         }
 
     def _get_valid_actions(self):
-        # Przygotowujemy wektor dozwolonych akcji
+        # Initialize with all zeros
         valid_actions = np.zeros(len(ActionType), dtype=np.int8)
 
-        # Końca tury i bezczynności są zawsze dozwolone
+        # These actions are always available
         valid_actions[ActionType.END_TURN.value] = 1
         valid_actions[ActionType.DO_NOTHING.value] = 1
 
