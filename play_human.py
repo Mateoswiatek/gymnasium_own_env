@@ -7,12 +7,15 @@ def main():
     observation, _ = env.reset()
 
     running = True
+    human_player_id = 0  # Player 1 is always human
+
     while running:
         current_player = env.players[env.current_player_idx]
 
         # Handle AI turn automatically
-        if current_player.is_ai:
-            env.step(ActionType.END_TURN.value)  # Let AI play its turn
+        if current_player.player_id != human_player_id:
+            env._execute_ai_turn(current_player)
+            env._end_turn()
             continue
 
         # Human player's turn - process inputs
@@ -60,7 +63,7 @@ def main():
                 elif event.key == pygame.K_2:
                     action = ActionType.DO_NOTHING.value
                 else:
-                    continue  # Skip unmapped keys
+                    continue
 
                 # Execute action
                 observation, reward, terminated, truncated, info = env.step(action)
@@ -68,13 +71,13 @@ def main():
                     print(f"Game over! Reason: {info.get('reason', 'Unknown')}")
                     running = False
 
-            # Mouse controls (unit/city selection)
+            # Mouse controls
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left-click
                     x, y = event.pos[0] // env.cell_size, event.pos[1] // env.cell_size
                     if 0 <= x < env.map_size[1] and 0 <= y < env.map_size[0]:
                         env.select_unit(x, y) or env.select_city(x, y)
-                elif event.button == 3:  # Right-click (deselect)
+                elif event.button == 3:  # Right-click
                     env.selected_unit_idx = None
                     env.selected_city_idx = None
 
