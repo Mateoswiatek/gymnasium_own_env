@@ -506,6 +506,7 @@ class MicroCivEnv(gym.Env):
                 # Akcja nie jest dozwolona
                 reward = -1 # Kara za próbę wykonania niedozwolonej akcji
                 info["action_executed"] = False
+                print(f"Action: {action} is not a valid action.")
                 info["message"] = f"Action {ActionType(action).name} is not valid"
         else:
             # Dla AI wykonujemy prostą strategię
