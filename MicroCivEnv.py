@@ -1029,7 +1029,7 @@ class MicroCivEnv(gym.Env):
         """Check victory conditions - control 70% of map or defeat all opponents."""
         total_tiles = self.map_size[0] * self.map_size[1]
 
-        # Check if any player controls 70% of the map
+        # Check if any player controls 70% of the maps
         for player in self.players:
             controlled = player.get_controlled_tiles(self.map_size)
             if len(controlled) / total_tiles >= 0.7:
@@ -1048,7 +1048,7 @@ class MicroCivEnv(gym.Env):
         pygame.display.init()
         self.window = pygame.display.set_mode(
             (self.map_size[1] * self.cell_size,
-             self.map_size[0] * self.cell_size + 100))  # Extra space for info
+             self.map_size[0] * self.cell_size + 200))  # Extra space for info
         pygame.display.set_caption("MicroCiv")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 24)
