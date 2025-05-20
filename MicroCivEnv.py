@@ -1154,7 +1154,7 @@ class MicroCivEnv(gym.Env):
         # Draw selected unit/city info
         if self.selected_unit_idx is not None and 0 <= self.selected_unit_idx < len(current_player.units):
             unit = current_player.units[self.selected_unit_idx]
-            unit_text = f"Selected: {unit.unit_type.name} at ({unit.x}, {unit.y})"
+            unit_text = f"Selected: {unit.unit_type.name} at ({unit.x}, {unit.y}). Moves: ({unit.movement_left}/{unit.max_movement})"
             text = self.font.render(unit_text, True, (0, 0, 0))
             canvas.blit(text, (10, y_offset + 70))
         elif self.selected_city_idx is not None and 0 <= self.selected_city_idx < len(current_player.cities):
