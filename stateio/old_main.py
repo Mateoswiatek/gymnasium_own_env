@@ -6,7 +6,6 @@ import networkx as nx
 from typing import List, Dict, Tuple, Optional, Union, Any
 import pygame
 import time
-import math
 
 class GraphGame:
     """

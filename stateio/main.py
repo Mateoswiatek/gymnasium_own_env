@@ -1,28 +1,24 @@
 import sys
 import random
 import math
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 
+import networkx as nx
+import numpy as np
 import pygame
 
 
 class City:
-    def __init__(self, x: int, y: int, size: int, color: Tuple[int, int, int], name: str = ""):
+    def __init__(self, x: int, y: int):
         """
         Inicjalizacja miasta.
 
         Args:
             x: Współrzędna X na planszy
             y: Współrzędna Y na planszy
-            size: Rozmiar miasta (promień okręgu)
-            color: Kolor miasta w formacie RGB
-            name: Nazwa miasta
         """
         self.x = x
         self.y = y
-        self.size = size
-        self.color = color
-        self.name = name if name else f"Miasto {x},{y}"
         self.warrior = 10
         self.player = None
 
@@ -30,9 +26,6 @@ class City:
         limit = 10 if self.player is None else 50
         if self.warrior < limit:
             self.warrior+=1
-
-
-
 
     # Interface
     def draw(self, screen: pygame.Surface, font: Optional[pygame.font.Font] = None):
@@ -43,16 +36,18 @@ class City:
             screen: Powierzchnia PyGame do rysowania
             font: Czcionka do wyświetlania nazwy miasta
         """
+        #TODO (20.05.2025): Tutaj będzie kolor gracza.
+
         # Rysowanie okręgu reprezentującego miasto
-        pygame.draw.circle(screen, self.color, (self.x, self.y), self.size)
+        pygame.draw.circle(screen, [255, 0, 0], (self.x, self.y), 20)
 
         # Rysowanie obramowania miasta
-        pygame.draw.circle(screen, (0, 0, 0), (self.x, self.y), self.size, 2)
+        pygame.draw.circle(screen, (0, 0, 0), (self.x, self.y), 20, 2)
 
         # Wyświetlanie nazwy miasta, jeśli podano czcionkę
         if font:
-            text = font.render(self.name, True, (0, 0, 0))
-            text_rect = text.get_rect(center=(self.x, self.y - self.size - 10))
+            text = font.render("City", True, (0, 0, 0))
+            text_rect = text.get_rect(center=(self.x, self.y - 20 - 10))
             screen.blit(text, text_rect)
 
     def is_clicked(self, mouse_pos: Tuple[int, int]) -> bool:
@@ -66,7 +61,7 @@ class City:
             bool: True, jeśli kliknięcie było wewnątrz miasta
         """
         distance = math.sqrt((mouse_pos[0] - self.x) ** 2 + (mouse_pos[1] - self.y) ** 2)
-        return distance <= self.size
+        return distance <= 20
 
 
 class GridGame:
@@ -76,8 +71,9 @@ class GridGame:
                  grid_size: int = 10,
                  screen_size: int = 800,
                  num_cities: int = 5,
-                 min_city_size: int = 10,
-                 max_city_size: int = 30):
+                 max_neutral_warrior: int = 10,
+                 seed: Optional[int] = None
+                 ):
         """
         Inicjalizacja gry.
 
@@ -88,6 +84,27 @@ class GridGame:
             min_city_size: Minimalny rozmiar miasta
             max_city_size: Maksymalny rozmiar miasta
         """
+
+        if seed is not None:
+            np.random.seed(seed)
+
+        self._init_for_pygame(grid_size, screen_size,num_cities, max_neutral_warrior)
+
+
+        # Initialize graph
+        self.graph = nx.Graph()
+        # Generowanie miast
+        self._generate_cities()
+
+
+        # Wybrane miasto
+        self.selected_city = None
+
+    def _init_for_pygame(self,
+                         grid_size: int = 10,
+                         screen_size: int = 800,
+                         num_cities: int = 5,
+                         max_neutral_warrior: int = 10,):
         # Inicjalizacja PyGame
         pygame.init()
 
@@ -95,9 +112,8 @@ class GridGame:
         self.grid_size = grid_size
         self.screen_size = screen_size
         self.cell_size = screen_size // grid_size
-        self.num_cities = min(num_cities, grid_size * grid_size)  # Nie więcej miast niż komórek
-        self.min_city_size = min_city_size
-        self.max_city_size = max_city_size
+        self.num_cities = min(num_cities, grid_size * grid_size)
+        self.max_neutral_warrior = max_neutral_warrior
 
         # Tworzenie okna gry
         self.screen = pygame.display.set_mode((screen_size, screen_size))
@@ -107,13 +123,12 @@ class GridGame:
         self.font = pygame.font.SysFont('Arial', 14)
         self.title_font = pygame.font.SysFont('Arial', 24, bold=True)
 
-        # Lista miast
-        self.cities: List[City] = []
-
         # Kolory
         self.BACKGROUND_COLOR = (240, 240, 240)
         self.GRID_COLOR = (200, 200, 200)
-        self.CITY_COLORS = [
+
+
+        self.PLAYERS_COLORS = [
             (255, 0, 0),    # Czerwony
             (0, 0, 255),    # Niebieski
             (0, 128, 0),    # Zielony
@@ -124,49 +139,51 @@ class GridGame:
             (255, 105, 180) # Różowy
         ]
 
-        # Wybrane miasto
-        self.selected_city = None
-
-        # Generowanie miast
-        self._generate_cities()
 
     def _generate_cities(self):
         """Generuje losowe miasta na planszy."""
-        self.cities = []
         city_positions = set()  # Do śledzenia zajętych pozycji
 
+
         for i in range(self.num_cities):
-            # Próbuj znaleźć wolną pozycję dla miasta
-            attempts = 0
-            while attempts < 100:  # Limit prób, aby uniknąć nieskończonej pętli
-                # Wybierz losową komórkę siatki
-                grid_x = random.randint(0, self.grid_size - 1)
-                grid_y = random.randint(0, self.grid_size - 1)
+            for _ in range(100):
+                gx = random.randint(0, self.grid_size - 1)
+                gy = random.randint(0, self.grid_size - 1)
 
-                # Sprawdź, czy pozycja jest już zajęta
-                if (grid_x, grid_y) not in city_positions:
-                    city_positions.add((grid_x, grid_y))
-                    break
+                if (gx, gy) in city_positions:
+                    continue
 
-                attempts += 1
+                city_positions.add((gx, gy))
+                px = gx * self.cell_size + self.cell_size // 2
+                py = gy * self.cell_size + self.cell_size // 2
+                self.graph.add_node(City(px, py))
+                break
 
-            if attempts == 100:
-                print(f"Nie udało się znaleźć miejsca dla miasta {i+1}.")
-                continue
-
-            # Oblicz pozycję piksela (środek komórki)
-            pixel_x = grid_x * self.cell_size + self.cell_size // 2
-            pixel_y = grid_y * self.cell_size + self.cell_size // 2
-
-            # Losowy rozmiar miasta (nie większy niż połowa rozmiaru komórki)
-            max_possible_size = min(self.max_city_size, self.cell_size // 2 - 2)
-            size = random.randint(self.min_city_size, max_possible_size)
-
-            # Losowy kolor miasta
-            color = random.choice(self.CITY_COLORS)
-
-            # Dodaj miasto do listy
-            self.cities.append(City(pixel_x, pixel_y, size, color, f"Miasto {i+1}"))
+        #
+        # for i in range(self.num_cities):
+        #     # Próbuj znaleźć wolną pozycję dla miasta
+        #     attempts = 0
+        #     while attempts < 100:  # Limit prób, aby uniknąć nieskończonej pętli
+        #         # Wybierz losową komórkę siatki
+        #         grid_x = random.randint(0, self.grid_size - 1)
+        #         grid_y = random.randint(0, self.grid_size - 1)
+        #
+        #         # Sprawdź, czy pozycja jest już zajęta
+        #         if (grid_x, grid_y) not in city_positions:
+        #             city_positions.add((grid_x, grid_y))
+        #             break
+        #
+        #         attempts += 1
+        #
+        #     if attempts == 100:
+        #         print(f"Nie udało się znaleźć miejsca dla miasta {i+1}.")
+        #         continue
+        #
+        #     # Oblicz pozycję piksela (środek komórki)
+        #     pixel_x = grid_x * self.cell_size + self.cell_size // 2
+        #     pixel_y = grid_y * self.cell_size + self.cell_size // 2
+        #
+        #     self.graph.add_node(City(pixel_x, pixel_y))
 
     def _draw_grid(self):
         """Rysuje siatkę planszy."""
@@ -269,11 +286,11 @@ class GridGame:
             # Rysowanie siatki
             self._draw_grid()
 
-            for city in self.cities:
+            for city in self.graph.nodes:
                 city.step()
 
             # Rysowanie miast
-            for city in self.cities:
+            for city in self.graph.nodes:
                 # Podświetl wybrane miasto
                 if city == self.selected_city:
                     # Rysuj podświetlenie
@@ -297,22 +314,22 @@ class GridGame:
             clock.tick(120)
 
 
+    # Interface
+
+
+
 def main():
     """Funkcja główna programu."""
     # Parametry gry
     grid_size = 10       # Rozmiar siatki NxN
     screen_size = 800    # Rozmiar okna w pikselach
     num_cities = 7       # Liczba miast
-    min_city_size = 15   # Minimalny rozmiar miasta
-    max_city_size = 25   # Maksymalny rozmiar miasta
 
     # Utworzenie i uruchomienie gry
     game = GridGame(
         grid_size=grid_size,
         screen_size=screen_size,
         num_cities=num_cities,
-        min_city_size=min_city_size,
-        max_city_size=max_city_size
     )
 
     game.run()
