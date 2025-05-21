@@ -91,7 +91,9 @@ class GridGame:
                  seed: int = 100
                  ):
 
-        self.players: List[Player] = [Player(env=self) for _ in range(num_players)]
+        self.players: List[Player] = [Player(env=self, is_bot=True) for _ in range(num_players)]
+        self.players[0].is_bot=False
+        self.players[0].is_ai=False
 
         self.seed = seed # For restart Game.
 
@@ -275,7 +277,6 @@ class GridGame:
             for player in self.players:
                 player.choose_action(state)
 
-            print("Po wyborach Graczy")
             # Generowanie jednostek w miastach
             for city in self.graph.nodes:
                 city.step()
@@ -310,47 +311,50 @@ class GridGame:
 
 
 class Player:
-    def __init__(self, env: GridGame):
-        self.is_ai = False
-        self.is_bot = False
+    def __init__(self, env: GridGame, is_bot: bool = False, is_ai: bool = False):
+        self.is_bot = is_bot
+        self.is_ai = is_ai
         self.env = env
 
     def choose_action(self, state):
         if(self.is_ai):
             print("AI")
+            return
         if(self.is_bot):
             print("Bot")
-        else:
-            print("Gracz")
-            waiting = True
-            while waiting:
-                # Rysowanie Gry
-                self.env._draw_game()
+            return
 
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
+        waiting = True
+        clock = pygame.time.Clock()
 
-                    elif event.type == pygame.MOUSEBUTTONDOWN:
-                        if event.button == 1:  # Lewy przycisk myszy
-                            mouse_pos = pygame.mouse.get_pos()
-                            for city in self.env.graph.nodes:
-                                if city.is_clicked(mouse_pos, self.env.world_to_screen):
-                                    self.env.selected_city = city
-                                    print("Wybrano Miasto")
-                                    return
-                            self.env.selected_city = None
+        while waiting:
+            self.env._draw_game()
+            pygame.display.flip()
 
-                    # Obsługa klawiatury
-                    elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_BACKSPACE:
-                            self.env.reset()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
 
-                        if event.key == pygame.K_RETURN:
-                            print(waiting)
-                            waiting = False
-            time.sleep(2)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mouse_pos = pygame.mouse.get_pos()
+
+                    for city in self.env.graph.nodes:
+                        if city.is_clicked(mouse_pos, self.env.world_to_screen):
+                            self.env.selected_city = city
+                            print("Wybrano miasto")
+                            break
+                    else:
+                        self.env.selected_city = None
+
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        print("Potwierdzono wybór Enterem.")
+                        waiting = False
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.env.reset()
+
+            clock.tick(60)
 
 
 def main():
