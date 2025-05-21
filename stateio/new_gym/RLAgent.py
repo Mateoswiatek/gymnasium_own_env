@@ -18,7 +18,11 @@ class RLAgent:
 
         self.episode_rewards = []
         self.average_rewards = []
-        self.rng = np.random.default_rng()
+
+
+        self.seed = 100
+
+        self.rng = np.random.default_rng(self.seed)
 
     def choose_action(self, state):
         """Wybiera akcję zgodnie z epsilon-greedy."""
@@ -41,12 +45,14 @@ class RLAgent:
             return self.rng.choice(available_actions)
 
     def update_q_table(self, state, action, reward, next_state, done):
-        """Aktualizuje Q-wartość wg Q-learningu."""
-        max_future_q = max(self.q_table[next_state].values()) if not done and self.q_table[next_state] else 0.0
-        current_q = self.q_table[state][action]
+        s = self.serialize_state(state)
+        s_next = self.serialize_state(next_state)
+
+        max_future_q = max(self.q_table[s_next].values()) if not done and self.q_table[s_next] else 0.0
+        current_q = self.q_table[s][action]
 
         new_q = current_q + self.lr * (reward + self.gamma * max_future_q - current_q)
-        self.q_table[state][action] = new_q
+        self.q_table[s][action] = new_q
 
     def train(self, num_episodes=10000):
         """Trenuje agenta w środowisku."""
