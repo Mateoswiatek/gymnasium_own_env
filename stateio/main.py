@@ -1,13 +1,30 @@
 import sys
 import random
 import math
-from typing import Tuple, Optional
+import time
+from typing import Tuple, List
 
 import networkx as nx
 import numpy as np
 import pygame
 
 SIZE_OF_CITY = 20
+
+# Kolory
+BACKGROUND_COLOR = (240, 240, 240)
+GRID_COLOR = (200, 200, 200)
+
+
+PLAYERS_COLORS = [
+    (255, 0, 0),    # Czerwony
+    (0, 0, 255),    # Niebieski
+    (0, 128, 0),    # Zielony
+    (255, 165, 0),  # Pomarańczowy
+    (128, 0, 128),  # Fioletowy
+    (165, 42, 42),  # Brązowy
+    (0, 128, 128),  # Morski
+    (255, 105, 180) # Różowy
+]
 
 class City:
     def __init__(self, x: int, y: int):
@@ -20,13 +37,13 @@ class City:
         """
         self.x = x
         self.y = y
-        self.warrior = 10
-        self.player = None
+        self.warriors = 5
+        self.player: Player = None
 
     def step(self):
         limit = 10 if self.player is None else 50
-        if self.warrior < limit:
-            self.warrior+=1
+        if self.warriors < limit:
+            self.warriors+=1
 
     # Interface
     def draw(self, screen, font, world_to_screen_fn):
@@ -39,6 +56,11 @@ class City:
             text = font.render("City", True, (0, 0, 0))
             rect = text.get_rect(center=(screen_x, screen_y - SIZE_OF_CITY - 10))
             screen.blit(text, rect)
+
+            # Liczba wojowników wewnątrz kółka
+            warrior_text = font.render(str(self.warriors), True, (0, 0, 0))
+            warrior_rect = warrior_text.get_rect(center=(screen_x, screen_y))
+            screen.blit(warrior_text, warrior_rect)
 
 
     def is_clicked(self, mouse_pos: Tuple[int, int], world_to_screen_fn) -> bool:
@@ -64,13 +86,18 @@ class GridGame:
                  world_size: int = 10,
                  screen_size: int = 1000,
                  num_cities: int = 5,
+                 num_players: int = 2,
                  max_neutral_warrior: int = 10,
-                 seed: Optional[int] = None
+                 seed: int = 100
                  ):
 
-        if seed is not None:
-            self.rng = np.random.default_rng(seed)
-            self.py_rng = random.Random(seed)
+        self.players: List[Player] = [Player(env=self) for _ in range(num_players)]
+
+        self.seed = seed # For restart Game.
+
+        self.rng = np.random.default_rng(self.seed)
+        self.py_rng = random.Random(self.seed)
+
         self.world_size = world_size
 
         self._init_for_pygame(grid_size, screen_size, num_cities, max_neutral_warrior)
@@ -79,7 +106,6 @@ class GridGame:
         self.graph = nx.Graph()
         # Generowanie miast
         self._generate_cities()
-
 
         # Wybrane miasto
         self.selected_city = None
@@ -106,23 +132,6 @@ class GridGame:
         # Czcionki
         self.font = pygame.font.SysFont('Arial', 14)
         self.title_font = pygame.font.SysFont('Arial', 24, bold=True)
-
-        # Kolory
-        self.BACKGROUND_COLOR = (240, 240, 240)
-        self.GRID_COLOR = (200, 200, 200)
-
-
-        self.PLAYERS_COLORS = [
-            (255, 0, 0),    # Czerwony
-            (0, 0, 255),    # Niebieski
-            (0, 128, 0),    # Zielony
-            (255, 165, 0),  # Pomarańczowy
-            (128, 0, 128),  # Fioletowy
-            (165, 42, 42),  # Brązowy
-            (0, 128, 128),  # Morski
-            (255, 105, 180) # Różowy
-        ]
-
 
     def _generate_cities(self):
         """Generuje losowe miasta na planszy."""
@@ -175,7 +184,7 @@ class GridGame:
             ax, ay = self.world_to_screen(city_a.x, city_a.y)
             bx, by = self.world_to_screen(city_b.x, city_b.y)
 
-            pygame.draw.line(self.screen, (100, 100, 100), (ax, ay), (bx, by), 2)
+            pygame.draw.line(self.screen, (100, 100, 100), (ax, ay), (bx, by), 1)
 
             mx, my = (ax + bx) // 2, (ay + by) // 2
             text = self.font.render(f"{data['weight']}", True, (0, 0, 0))
@@ -186,13 +195,13 @@ class GridGame:
         """Rysuje siatkę planszy."""
 
         # Czyszczenie ekranu
-        self.screen.fill(self.BACKGROUND_COLOR)
+        self.screen.fill(BACKGROUND_COLOR)
 
         for i in range(self.grid_size + 1):
             # Poziome linie
             pygame.draw.line(
                 self.screen,
-                self.GRID_COLOR,
+                GRID_COLOR,
                 (0, i * self.cell_size),
                 (self.screen_size, i * self.cell_size),
                 1
@@ -201,11 +210,13 @@ class GridGame:
             # Pionowe linie
             pygame.draw.line(
                 self.screen,
-                self.GRID_COLOR,
+                GRID_COLOR,
                 (i * self.cell_size, 0),
                 (i * self.cell_size, self.screen_size),
                 1
             )
+
+        self._draw_edges()
 
         # Rysowanie miast
         for city in self.graph.nodes:
@@ -222,8 +233,6 @@ class GridGame:
 
             city.draw(self.screen, self.font, self.world_to_screen)
 
-        self._draw_edges()
-
         # Wyświetlanie informacji o wybranym mieście
         self._draw_city_info()
 
@@ -237,9 +246,8 @@ class GridGame:
             info_text = [
                 f"Pozycja: ({self.selected_city.x}, {self.selected_city.y})",
                 f"Player: {self.selected_city.player}",
+                f"Warriors: {self.selected_city.warriors}",
             ]
-
-            # TODO - narysować ilość wojowników
 
             # Rysuj panel informacyjny
             info_surface = pygame.Surface((250, 100))
@@ -258,56 +266,91 @@ class GridGame:
             # Wyświetl panel w prawym górnym rogu
             self.screen.blit(info_surface, (self.screen_size - 260, 10))
 
-    def _handle_events(self):
-        """Obsługa zdarzeń PyGame."""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+    def stepGame(self):
+            # Akcje Graczy
+            # - Ruch jednostek ze swojego miasta do dowolnego innego (Sojuszniczego lub wrogiego).
+            # - Nic nie robienie (oczekiwanie)
 
+            state = []
+            for player in self.players:
+                player.choose_action(state)
 
-            #TODO (20.05.2025): poprawić wybieranie miast na mapie. tak aby było git. + Debuggowanie, wyświetlaie lokalizacji w świecie.
-            # Obsługa kliknięcia myszy
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Lewy przycisk myszy
-                    mouse_pos = pygame.mouse.get_pos()
-                    for city in self.graph.nodes:
-                        if city.is_clicked(mouse_pos, self.world_to_screen):
-                            self.selected_city = city
-                            print("Wybrano Miasto")
-                            return
-                    self.selected_city = None
-
-            # Obsługa klawiatury
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_r:  # Klawisz R - wygeneruj nowe miasta
-                    self._generate_cities()
-                    self.selected_city = None
-                elif event.key == pygame.K_ESCAPE:  # ESC - odznacz miasto
-                    self.selected_city = None
-
-    def run(self):
-        """Główna pętla gry."""
-        clock = pygame.time.Clock()
-
-        while True:
-
+            print("Po wyborach Graczy")
+            # Generowanie jednostek w miastach
             for city in self.graph.nodes:
                 city.step()
 
-            # Jednostki.
+            # Ruch jednostek
 
-            # Obsługa zdarzeń / Tutaj będą działania graczy
-            self._handle_events()
 
-            # Rysowanie Gry
-            self._draw_game()
+            # Przejmowanie miast
 
-            # Ograniczenie FPS
-            clock.tick(120)
+
+    def reset(self):
+        self.rng = np.random.default_rng(self.seed)
+        self.py_rng = random.Random(self.seed)
+
+        # Initialize graph
+        self.graph = nx.Graph()
+        # Generowanie miast
+        self._generate_cities()
+        # Wybrane miasto
+        self.selected_city = None
+
+        #TODO dodanie, restartu wyników dla graczy
+
 
     # Interface
+    def run(self):
+        """Główna pętla gry."""
 
+        while True:
+            self.stepGame()
+
+
+
+class Player:
+    def __init__(self, env: GridGame):
+        self.is_ai = False
+        self.is_bot = False
+        self.env = env
+
+    def choose_action(self, state):
+        if(self.is_ai):
+            print("AI")
+        if(self.is_bot):
+            print("Bot")
+        else:
+            print("Gracz")
+            waiting = True
+            while waiting:
+                # Rysowanie Gry
+                self.env._draw_game()
+
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if event.button == 1:  # Lewy przycisk myszy
+                            mouse_pos = pygame.mouse.get_pos()
+                            for city in self.env.graph.nodes:
+                                if city.is_clicked(mouse_pos, self.env.world_to_screen):
+                                    self.env.selected_city = city
+                                    print("Wybrano Miasto")
+                                    return
+                            self.env.selected_city = None
+
+                    # Obsługa klawiatury
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_BACKSPACE:
+                            self.env.reset()
+
+                        if event.key == pygame.K_RETURN:
+                            print(waiting)
+                            waiting = False
+            time.sleep(2)
 
 
 def main():
@@ -315,11 +358,11 @@ def main():
     # Parametry gry
     grid_size = 20       # Rozmiar siatki NxN
     screen_size = 800    # Rozmiar okna w pikselach
-    num_cities = 7       # Liczba miast
+    num_cities = 12       # Liczba miast
 
     # Utworzenie i uruchomienie gry
     game = GridGame(
-        seed=1000,
+        seed=50,
         grid_size=grid_size,
         screen_size=screen_size,
         num_cities=num_cities,
