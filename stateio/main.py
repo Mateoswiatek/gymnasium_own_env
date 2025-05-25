@@ -367,10 +367,7 @@ class GridGame(gym.Env):
                 reward += 1  # bonus za przejęcie
             else:
                 to_city.warriors = to_city.warriors - moved_units
-                reward -= 1  # kara za przegraną walkę
-
-        for city in cities:
-            city.step()
+                reward -= 0.5  # kara za przegraną walkę
 
         obs = self._get_obs()
         # Sprawdź, czy wszystkie miasta są bez właściciela lub należą do bieżącego gracza
@@ -383,19 +380,22 @@ class GridGame(gym.Env):
 
         self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
 
+        if self.current_player_idx == 0:
+            for city in cities:
+                city.step()
+
         return obs, reward, done, False, {}
 
-    def get_available_actions(self, state):
+    def get_available_actions(self):
         # Akcja pass jest zawsze dostępna
         available = [self.pass_action]
-
-        units = np.array(state["units"])
-        owners = np.array(state["owners"])
+        current_player = self.players[self.current_player_idx]
 
         # Możemy ruszać jednostkami tylko z miast, które należą do agenta i mają >1 jednostki
-        for edge_idx, (from_city, to_city) in enumerate(self.edges):
-            if owners[from_city] == 0 and units[from_city] > 1:
-                available.append(edge_idx)
+        for action_idx, (from_city_id, to_city_id) in self.action_to_edge.items():
+            from_city = next(city for city in self.graph.nodes if city.id == from_city_id)
+            if from_city.player == current_player and from_city.warriors > 1:
+                available.append(action_idx)
 
         return available
 
@@ -423,13 +423,21 @@ class Player:
         self.is_ai = is_ai
         self.env = env
 
-    def choose_action(self, state):
-        # if(self.is_ai):
-        #     print("AI")
-        #     return
-        # if(self.is_bot):
-        #     print("Bot")
-        #     return
+    def choose_action(self, obs):
+        if(self.is_ai):
+            print("AI")
+            return
+        if(self.is_bot):
+            print("Bot")
+            for action in self.env.get_available_actions():
+                if action == self.env.pass_action:
+                    continue
+                from_city_id, to_city_id = self.env.action_to_edge[action]
+                from_city = next(city for city in self.env.graph.nodes if city.id == from_city_id)
+                to_city = next(city for city in self.env.graph.nodes if city.id == to_city_id)
+                if from_city.warriors > to_city.warriors and to_city.player != self:
+                    return action
+            return self.env.pass_action
 
         waiting = True
         clock = pygame.time.Clock()
@@ -461,7 +469,6 @@ class Player:
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
-                        print("Potwierdzono wybór Enterem.")
                         waiting = False
                         return self.env.pass_action
                     elif event.key == pygame.K_BACKSPACE:
