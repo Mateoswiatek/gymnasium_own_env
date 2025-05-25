@@ -211,6 +211,7 @@ class GridGame(gym.Env):
                 while city.player is not None:
                     city = self.py_rng.choice(list(self.graph.nodes))
                 city.player = player
+                city.warriors += 5 
                 player.env = self
 
 
