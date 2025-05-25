@@ -49,9 +49,13 @@ class City:
     def draw(self, screen, font, world_to_screen_fn):
         screen_x, screen_y = world_to_screen_fn(self.x, self.y)
 
-        #TODO tu będzie kolor gracza.
-        pygame.draw.circle(screen, [255, 0, 0], (screen_x, screen_y), SIZE_OF_CITY)
+        color = (255, 255, 255)
+        if self.player is not None:
+            color = PLAYERS_COLORS[self.player.env.players.index(self.player) % len(PLAYERS_COLORS)]
+
+        pygame.draw.circle(screen, color, (screen_x, screen_y), SIZE_OF_CITY)
         pygame.draw.circle(screen, (0, 0, 0), (screen_x, screen_y), SIZE_OF_CITY, 2)
+
         if font:
             text = font.render("City", True, (0, 0, 0))
             rect = text.get_rect(center=(screen_x, screen_y - SIZE_OF_CITY - 10))
@@ -91,7 +95,7 @@ class GridGame:
                  seed: int = 100
                  ):
 
-        self.players: List[Player] = [Player(env=self, is_bot=True) for _ in range(num_players)]
+        self.players: List[Player] = [Player(env=self, is_bot=True, id=id+1) for id in range(num_players)]
         self.players[0].is_bot=False
         self.players[0].is_ai=False
 
@@ -160,6 +164,15 @@ class GridGame:
                 dy = city_a.y - city_b.y
                 distance = round((dx ** 2 + dy ** 2) ** 0.5, 1)  # Euklidesowy dystans
                 self.graph.add_edge(city_a, city_b, weight=distance)
+        
+        for player in self.players:
+            # Przydzielanie graczy do miast
+            if self.graph.nodes:
+                city = self.py_rng.choice(list(self.graph.nodes))
+                while city.player is not None:
+                    city = self.py_rng.choice(list(self.graph.nodes))
+                city.player = player
+                player.env = self
 
 
 
@@ -170,14 +183,18 @@ class GridGame:
 ##################################################################
     def world_to_screen(self, x: int, y: int) -> Tuple[int, int]:
         """Skaluje pozycję świata do rozmiaru ekranu."""
-        sx = int((x / self.world_size) * self.screen_size)
-        sy = int((y / self.world_size) * self.screen_size)
+        padding = SIZE_OF_CITY + 5  # padding w pikselach
+        effective_screen = self.screen_size - 2 * padding
+        sx = int(padding + (x / self.world_size) * effective_screen)
+        sy = int(padding + (y / self.world_size) * effective_screen)
         return sx, sy
 
     def screen_to_world(self, sx: int, sy: int) -> Tuple[int, int]:
-        """Przekształca pozycję ekranu na współrzędne świata."""
-        wx = int((sx / self.screen_size) * self.world_size)
-        wy = int((sy / self.screen_size) * self.world_size)
+        """Przekształca pozycję ekranu na współrzędne świata z uwzględnieniem paddingu."""
+        padding = SIZE_OF_CITY + 5  # taki sam jak w world_to_screen
+        effective_screen = self.screen_size - 2 * padding
+        wx = int(((sx - padding) / effective_screen) * self.world_size)
+        wy = int(((sy - padding) / effective_screen) * self.world_size)
         return wx, wy
 
     def _draw_edges(self):
@@ -247,7 +264,7 @@ class GridGame:
             # Przygotuj informacje o mieście
             info_text = [
                 f"Pozycja: ({self.selected_city.x}, {self.selected_city.y})",
-                f"Player: {self.selected_city.player}",
+                f"Player: {self.selected_city.player.id if self.selected_city.player else 'Neutral'}",
                 f"Warriors: {self.selected_city.warriors}",
             ]
 
@@ -311,7 +328,8 @@ class GridGame:
 
 
 class Player:
-    def __init__(self, env: GridGame, is_bot: bool = False, is_ai: bool = False):
+    def __init__(self, env: GridGame, is_bot: bool = False, is_ai: bool = False, id: int = None):
+        self.id = id if id is not None else random.randint(0, 1000)
         self.is_bot = is_bot
         self.is_ai = is_ai
         self.env = env
@@ -363,6 +381,7 @@ def main():
     grid_size = 20       # Rozmiar siatki NxN
     screen_size = 800    # Rozmiar okna w pikselach
     num_cities = 12       # Liczba miast
+    num_players = 2      # Liczba graczy
 
     # Utworzenie i uruchomienie gry
     game = GridGame(
@@ -370,6 +389,7 @@ def main():
         grid_size=grid_size,
         screen_size=screen_size,
         num_cities=num_cities,
+        num_players=num_players,
     )
 
     game.run()
