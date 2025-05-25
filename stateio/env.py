@@ -3,7 +3,6 @@ import gymnasium as gym
 from gymnasium import spaces
 import random
 import math
-import time
 from typing import Tuple, List
 
 import networkx as nx
@@ -105,7 +104,6 @@ class GridGame(gym.Env):
 
         self.players: List[Player] = [Player(env=self, is_bot=True, id=id+1) for id in range(num_players)]
         self.players[0].is_bot=False
-        self.players[0].is_ai=False
 
         self.seed = seed # For restart Game.
 
@@ -211,7 +209,7 @@ class GridGame(gym.Env):
                 while city.player is not None:
                     city = self.py_rng.choice(list(self.graph.nodes))
                 city.player = player
-                city.warriors += 5 
+                city.warriors = 10 
                 player.env = self
 
 
@@ -342,7 +340,7 @@ class GridGame(gym.Env):
 
         if action == self.pass_action:
             # pass: nic nie robimy, ale jednostki rosną
-            print("pass")
+            # print("pass")
             pass
         elif action > self.pass_action:
             raise ValueError("Invalid action.")
@@ -352,7 +350,7 @@ class GridGame(gym.Env):
             from_city = next(city for city in cities if city.id == from_id)
             to_city = next(city for city in cities if city.id == to_id)
             current_player = self.players[self.current_player_idx]
-            print(f"Ruch z {from_id} do {to_id}, gracz {current_player.id}")
+            # print(f"Ruch z {from_id} do {to_id}, gracz {current_player.id}")
 
             # Możliwa akcja tylko jeśli agent posiada from_city i ma >1 jednostek
             if from_city.player != current_player and from_city.warriors > 1:
@@ -383,10 +381,19 @@ class GridGame(gym.Env):
         if self.current_player_idx == 0:
             for city in cities:
                 city.step()
+            
+        if self.render_mode is not None:
+            self.render()
+
+        # Jeśli gracz jest botem, wykonaj jego ruch
+        while not done and self.players[self.current_player_idx].is_bot:
+            bot_player = self.players[self.current_player_idx]
+            bot_action = bot_player.bot_move(obs)
+            obs, bot_reward, done, _, info = self.step(bot_action)
 
         return obs, reward, done, False, {}
 
-    def get_available_actions(self):
+    def get_available_actions(self, state):
         # Akcja pass jest zawsze dostępna
         available = [self.pass_action]
         current_player = self.players[self.current_player_idx]
@@ -412,7 +419,13 @@ class GridGame(gym.Env):
 
         self.current_player_idx = 0
         self.steps = 0
-        #TODO dodanie, restartu wyników dla graczy
+
+        return self._get_obs(), {}
+    
+    def render(self):
+        """Renderuje grę."""
+        if self.render_mode == "human":
+            self._draw_game()
 
 
 
@@ -420,24 +433,23 @@ class Player:
     def __init__(self, env: GridGame, is_bot: bool = False, is_ai: bool = False, id: int = None):
         self.id = id if id is not None else random.randint(0, 1000)
         self.is_bot = is_bot
-        self.is_ai = is_ai
         self.env = env
 
-    def choose_action(self, obs):
-        if(self.is_ai):
-            print("AI")
-            return
-        if(self.is_bot):
-            print("Bot")
-            for action in self.env.get_available_actions():
-                if action == self.env.pass_action:
-                    continue
-                from_city_id, to_city_id = self.env.action_to_edge[action]
-                from_city = next(city for city in self.env.graph.nodes if city.id == from_city_id)
-                to_city = next(city for city in self.env.graph.nodes if city.id == to_city_id)
-                if from_city.warriors > to_city.warriors and to_city.player != self:
-                    return action
-            return self.env.pass_action
+    def bot_move(self, state):
+        for action in self.env.get_available_actions(state):
+            if action == self.env.pass_action:
+                continue
+            from_city_id, to_city_id = self.env.action_to_edge[action]
+            from_city = next(city for city in self.env.graph.nodes if city.id == from_city_id)
+            to_city = next(city for city in self.env.graph.nodes if city.id == to_city_id)
+            if from_city.warriors > to_city.warriors and to_city.player != self:
+                return action
+        return self.env.pass_action
+
+    def choose_action(self, state):
+        # if(self.is_bot):
+        #     # print("Bot")
+        #     return self.bot_move(state)
 
         waiting = True
         clock = pygame.time.Clock()
@@ -475,37 +487,3 @@ class Player:
                         self.env.reset()
 
             clock.tick(60)
-
-
-def main():
-    """Funkcja główna programu."""
-    # Parametry gry
-    grid_size = 10       # Rozmiar siatki NxN
-    screen_size = 800    # Rozmiar okna w pikselach
-    num_cities = 6       # Liczba miast
-    num_players = 2      # Liczba graczy
-
-    # Utworzenie i uruchomienie gry
-    game = GridGame(
-        seed=50,
-        grid_size=grid_size,
-        screen_size=screen_size,
-        num_cities=num_cities,
-        num_players=num_players,
-        render_mode="human",
-    )
-
-    running = True
-    while running:
-        current_player = game.players[game.current_player_idx]
-        action = current_player.choose_action(game._get_obs())
-        if action is None:
-            continue
-        obs, reward, done, _, info = game.step(action)
-        if done:
-            print(f"Gra zakończona! Wynik: {reward}")
-            running = False
-
-
-if __name__ == "__main__":
-    main()
