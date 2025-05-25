@@ -1,4 +1,6 @@
 import sys
+import gymnasium as gym
+from gymnasium import spaces
 import random
 import math
 import time
@@ -27,7 +29,7 @@ PLAYERS_COLORS = [
 ]
 
 class City:
-    def __init__(self, x: int, y: int):
+    def __init__(self, x: int, y: int, id: int, max_units: int = 50, max_neutral_units: int = 10):
         """
         Inicjalizacja miasta.
 
@@ -38,10 +40,13 @@ class City:
         self.x = x
         self.y = y
         self.warriors = 5
+        self.max_units = max_units
+        self.max_neutral_units = max_neutral_units
         self.player: Player = None
+        self.id = id
 
     def step(self):
-        limit = 10 if self.player is None else 50
+        limit = self.max_neutral_units if self.player is None else self.max_units
         if self.warriors < limit:
             self.warriors+=1
 
@@ -57,7 +62,7 @@ class City:
         pygame.draw.circle(screen, (0, 0, 0), (screen_x, screen_y), SIZE_OF_CITY, 2)
 
         if font:
-            text = font.render("City", True, (0, 0, 0))
+            text = font.render(f"City {self.id}", True, (0, 0, 0))
             rect = text.get_rect(center=(screen_x, screen_y - SIZE_OF_CITY - 10))
             screen.blit(text, rect)
 
@@ -82,8 +87,9 @@ class City:
         return distance <= SIZE_OF_CITY
 
 
-class GridGame:
+class GridGame(gym.Env):
     """Główna klasa gry z planszą NxN i miastami."""
+    metadata = {"render_modes": ["human"], "render_fps": 4}
 
     def __init__(self,
                  grid_size: int = 10,
@@ -92,7 +98,9 @@ class GridGame:
                  num_cities: int = 5,
                  num_players: int = 2,
                  max_neutral_warrior: int = 10,
-                 seed: int = 100
+                 seed: int = 100,
+                 max_units: int = 50,
+                 render_mode: str = None
                  ):
 
         self.players: List[Player] = [Player(env=self, is_bot=True, id=id+1) for id in range(num_players)]
@@ -106,12 +114,40 @@ class GridGame:
 
         self.world_size = world_size
 
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+
         self._init_for_pygame(grid_size, screen_size, num_cities, max_neutral_warrior)
 
         # Initialize graph
         self.graph = nx.Graph()
         # Generowanie miast
         self._generate_cities()
+
+        self.edges = list(self.graph.edges)
+
+        self.edge_to_action = {}
+        self.action_to_edge = {}
+        action_idx = 0
+        for edge in self.edges:
+            a, b = edge[0].id, edge[1].id
+            self.edge_to_action[(a, b)] = action_idx
+            self.action_to_edge[action_idx] = (a, b)
+            action_idx += 1
+            self.edge_to_action[(b, a)] = action_idx
+            self.action_to_edge[action_idx] = (b, a)
+            action_idx += 1
+        self.pass_action = action_idx
+        self.action_space = spaces.Discrete(self.pass_action + 1)
+
+        # Obserwacja: liczba jednostek i właściciele
+        self.observation_space = spaces.Dict({
+            "units": spaces.Box(low=0, high=max_units, shape=(num_cities,), dtype=np.int32),
+            "owners": spaces.Box(low=-1, high=1, shape=(num_cities,), dtype=np.int8),  # -1 brak właściciela, 0 agent
+        })
+
+        self.current_player_idx = 0
+        self.steps = 0
 
         # Wybrane miasto
         self.selected_city = None
@@ -120,7 +156,8 @@ class GridGame:
                          grid_size: int = 10,
                          screen_size: int = 200,
                          num_cities: int = 5,
-                         max_neutral_warrior: int = 10):
+                         max_neutral_warrior: int = 10,
+                         max_units: int = 50):
         # Inicjalizacja PyGame
         pygame.init()
 
@@ -130,27 +167,29 @@ class GridGame:
         self.cell_size = screen_size // grid_size
         self.num_cities = min(num_cities, grid_size * grid_size)
         self.max_neutral_warrior = max_neutral_warrior
+        self.max_units = max_units
 
         # Tworzenie okna gry
-        self.screen = pygame.display.set_mode((screen_size, screen_size))
-        pygame.display.set_caption(f"Plansza {grid_size}x{grid_size} z miastami")
+        if self.render_mode == "human":
+            self.screen = pygame.display.set_mode((screen_size, screen_size))
+            pygame.display.set_caption(f"Plansza {grid_size}x{grid_size} z miastami")
 
-        # Czcionki
-        self.font = pygame.font.SysFont('Arial', 14)
-        self.title_font = pygame.font.SysFont('Arial', 24, bold=True)
+            # Czcionki
+            self.font = pygame.font.SysFont('Arial', 14)
+            self.title_font = pygame.font.SysFont('Arial', 24, bold=True)
 
     def _generate_cities(self):
         """Generuje losowe miasta na planszy."""
 
         positions = set()
-        for _ in range(self.num_cities):
+        for i in range(self.num_cities):
             for _ in range(100):
                 x = self.py_rng.randint(0, self.world_size)
                 y = self.py_rng.randint(0, self.world_size)
                 if (x, y) in positions:
                     continue
                 positions.add((x, y))
-                city = City(x, y)
+                city = City(x, y, i+1, max_units=self.max_units, max_neutral_units=self.max_neutral_warrior)
                 self.graph.add_node(city)
                 break
 
@@ -285,24 +324,79 @@ class GridGame:
             # Wyświetl panel w prawym górnym rogu
             self.screen.blit(info_surface, (self.screen_size - 260, 10))
 
-    def stepGame(self):
-            # Akcje Graczy
-            # - Ruch jednostek ze swojego miasta do dowolnego innego (Sojuszniczego lub wrogiego).
-            # - Nic nie robienie (oczekiwanie)
+    def _get_obs(self):
+        # Zamiana na tuple, by mieć hashowalny klucz
+        units_t = tuple(city.warriors for city in self.graph.nodes)
+        owners_t = tuple(
+            (self.players.index(city.player) if city.player else -1) for city in self.graph.nodes
+        )
+        return {"units": units_t, "owners": owners_t}
 
-            state = []
-            for player in self.players:
-                player.choose_action(state)
+    def step(self, action: int):
+        self.steps += 1
 
-            # Generowanie jednostek w miastach
-            for city in self.graph.nodes:
-                city.step()
+        reward = -0.1
+        done = False
+        cities = list(self.graph.nodes)
 
-            # Ruch jednostek
+        if action == self.pass_action:
+            # pass: nic nie robimy, ale jednostki rosną
+            print("pass")
+            pass
+        elif action > self.pass_action:
+            raise ValueError("Invalid action.")
 
+        else:
+            from_id, to_id = self.action_to_edge[action]
+            from_city = next(city for city in cities if city.id == from_id)
+            to_city = next(city for city in cities if city.id == to_id)
+            current_player = self.players[self.current_player_idx]
+            print(f"Ruch z {from_id} do {to_id}, gracz {current_player.id}")
 
-            # Przejmowanie miast
+            # Możliwa akcja tylko jeśli agent posiada from_city i ma >1 jednostek
+            if from_city.player != current_player and from_city.warriors > 1:
+                return self._get_obs(), reward, False, False, {"reason": "Invalid action"}
+            moved_units = from_city.warriors
+            from_city.warriors -= moved_units
 
+            # Walka lub przejęcie
+            if moved_units > to_city.warriors:
+                to_city.warriors = moved_units - to_city.warriors
+                to_city.player = current_player
+                reward += 1  # bonus za przejęcie
+            else:
+                to_city.warriors = to_city.warriors - moved_units
+                reward -= 1  # kara za przegraną walkę
+
+        for city in cities:
+            city.step()
+
+        obs = self._get_obs()
+        # Sprawdź, czy wszystkie miasta są bez właściciela lub należą do bieżącego gracza
+        if all(city.player is None or city.player == self.players[self.current_player_idx] for city in cities):
+            done = True
+            reward += 100
+
+        if self.steps >= 100:
+            done = True
+
+        self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
+
+        return obs, reward, done, False, {}
+
+    def get_available_actions(self, state):
+        # Akcja pass jest zawsze dostępna
+        available = [self.pass_action]
+
+        units = np.array(state["units"])
+        owners = np.array(state["owners"])
+
+        # Możemy ruszać jednostkami tylko z miast, które należą do agenta i mają >1 jednostki
+        for edge_idx, (from_city, to_city) in enumerate(self.edges):
+            if owners[from_city] == 0 and units[from_city] > 1:
+                available.append(edge_idx)
+
+        return available
 
     def reset(self):
         self.rng = np.random.default_rng(self.seed)
@@ -315,15 +409,9 @@ class GridGame:
         # Wybrane miasto
         self.selected_city = None
 
+        self.current_player_idx = 0
+        self.steps = 0
         #TODO dodanie, restartu wyników dla graczy
-
-
-    # Interface
-    def run(self):
-        """Główna pętla gry."""
-
-        while True:
-            self.stepGame()
 
 
 
@@ -335,19 +423,20 @@ class Player:
         self.env = env
 
     def choose_action(self, state):
-        if(self.is_ai):
-            print("AI")
-            return
-        if(self.is_bot):
-            print("Bot")
-            return
+        # if(self.is_ai):
+        #     print("AI")
+        #     return
+        # if(self.is_bot):
+        #     print("Bot")
+        #     return
 
         waiting = True
         clock = pygame.time.Clock()
 
         while waiting:
-            self.env._draw_game()
-            pygame.display.flip()
+            if self.env.render_mode == "human":
+                self.env._draw_game()
+                pygame.display.flip()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -359,8 +448,12 @@ class Player:
 
                     for city in self.env.graph.nodes:
                         if city.is_clicked(mouse_pos, self.env.world_to_screen):
-                            self.env.selected_city = city
-                            print("Wybrano miasto")
+                            if self.env.selected_city == city:
+                                self.env.selected_city = None
+                            elif self.env.selected_city is not None:
+                                return self.env.edge_to_action[(self.env.selected_city.id, city.id)]
+                            else:
+                                self.env.selected_city = city
                             break
                     else:
                         self.env.selected_city = None
@@ -369,6 +462,7 @@ class Player:
                     if event.key == pygame.K_RETURN:
                         print("Potwierdzono wybór Enterem.")
                         waiting = False
+                        return self.env.pass_action
                     elif event.key == pygame.K_BACKSPACE:
                         self.env.reset()
 
@@ -378,9 +472,9 @@ class Player:
 def main():
     """Funkcja główna programu."""
     # Parametry gry
-    grid_size = 20       # Rozmiar siatki NxN
+    grid_size = 10       # Rozmiar siatki NxN
     screen_size = 800    # Rozmiar okna w pikselach
-    num_cities = 12       # Liczba miast
+    num_cities = 6       # Liczba miast
     num_players = 2      # Liczba graczy
 
     # Utworzenie i uruchomienie gry
@@ -390,9 +484,19 @@ def main():
         screen_size=screen_size,
         num_cities=num_cities,
         num_players=num_players,
+        render_mode="human",
     )
 
-    game.run()
+    running = True
+    while running:
+        current_player = game.players[game.current_player_idx]
+        action = current_player.choose_action(game._get_obs())
+        if action is None:
+            continue
+        obs, reward, done, _, info = game.step(action)
+        if done:
+            print(f"Gra zakończona! Wynik: {reward}")
+            running = False
 
 
 if __name__ == "__main__":
