@@ -102,7 +102,7 @@ class GridGame(gym.Env):
                  render_mode: str = None
                  ):
 
-        self.players: List[Player] = [Player(env=self, is_bot=True, id=id+1) for id in range(num_players)]
+        self.players: List[Player] = [Player(env=self, is_bot=True, id=id) for id in range(num_players)]
         self.players[0].is_bot=False
 
         self.seed = seed # For restart Game.
@@ -122,6 +122,7 @@ class GridGame(gym.Env):
         # Generowanie miast
         self._generate_cities()
         self.armies: List[Army] = []
+        self.last_army_rewards = [0 for _ in self.players]
 
         self.edges = list(self.graph.edges)
 
@@ -328,7 +329,7 @@ class GridGame(gym.Env):
             # Przygotuj informacje o mieście
             info_text = [
                 f"Pozycja: ({self.selected_city.x}, {self.selected_city.y})",
-                f"Player: {self.selected_city.player.id if self.selected_city.player else 'Neutral'}",
+                f"Player: {self.selected_city.player.id+1 if self.selected_city.player else 'Neutral'}",
                 f"Warriors: {self.selected_city.warriors}",
             ]
 
@@ -351,16 +352,20 @@ class GridGame(gym.Env):
 
     def _get_obs(self):
         # Zamiana na tuple, by mieć hashowalny klucz
-        units_t = tuple(city.warriors for city in self.graph.nodes)
+        city_units_t = tuple(city.warriors for city in self.graph.nodes)
         owners_t = tuple(
             (self.players.index(city.player) if city.player else -1) for city in self.graph.nodes
         )
-        return {"units": units_t, "owners": owners_t}
+        armies_t = tuple(
+            (army.from_city_id, army.to_city_id, army.player.id if army.player else -1, army.warriors)
+            for army in self.armies
+        )
+        return {"city_units": city_units_t, "owners": owners_t, "armies": armies_t}
 
     def step(self, action: int):
         self.steps += 1
 
-        reward = -0.1
+        reward = -0.1 + self.last_army_rewards[self.current_player_idx]
         done = False
         cities = list(self.graph.nodes)
 
@@ -420,7 +425,7 @@ class GridGame(gym.Env):
         if self.current_player_idx == 0:
             for city in cities:
                 city.step()
-            self.advance_armies()
+            self.last_army_rewards = self.advance_armies()
             
         obs = self._get_obs()
 
@@ -436,6 +441,7 @@ class GridGame(gym.Env):
         return obs, reward, done, False, {}
     
     def advance_armies(self):
+        reward = [0 for _ in self.players]
         for army in self.armies:
             army.progress += 1
             for other in self.armies:
@@ -443,6 +449,10 @@ class GridGame(gym.Env):
                     damage = min(army.warriors, other.warriors)
                     army.warriors -= damage
                     other.warriors -= damage
+                    if army.warriors > 0:
+                        reward[army.player.id] += 0.5
+                    if other.warriors > 0:
+                        reward[other.player.id] += 0.5
             if army.progress >= army.total_distance:
                 to_city = next(city for city in self.graph.nodes if city.id == army.to_city_id)
                 if to_city.player == army.player:
@@ -452,9 +462,13 @@ class GridGame(gym.Env):
                     army.warriors -= damage
                     to_city.warriors -= damage
                     if army.warriors > 0:
+                        if to_city.player is not None:
+                            reward[to_city.player.id] -= 1
+                        reward[army.player.id] += 1
                         to_city.player = army.player
                         to_city.warriors = army.warriors
         self.armies = [army for army in self.armies if army.warriors > 0 and army.progress < army.total_distance]
+        return reward
 
     def get_available_actions(self, state):
         # Akcja pass jest zawsze dostępna

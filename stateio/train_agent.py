@@ -23,9 +23,10 @@ class RLAgent:
         self.rng = np.random.default_rng()
 
     def serialize_state(self, state):
-        units = tuple(state["units"])
+        city_units = tuple(state["city_units"])
         owners = tuple(state["owners"])
-        return (units, owners)
+        armies = tuple(state["armies"])
+        return (city_units, owners, armies)
 
 
     def choose_action(self, state):
@@ -124,9 +125,9 @@ class RLAgent:
 
 
 if __name__ == "__main__":
-    env = GridGame(render_mode=None, seed=42, grid_size=10, screen_size=800, num_cities=6, num_players=2)
+    env = GridGame(render_mode=None, seed=42, grid_size=30, screen_size=800, num_cities=16, num_players=2)
     agent = RLAgent(env)
 
-    agent.train(num_episodes=100000)
+    agent.train(num_episodes=10000)
     agent.evaluate(num_episodes=1000)
     agent.plot_learning_curve()
