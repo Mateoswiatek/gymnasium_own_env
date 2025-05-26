@@ -121,6 +121,7 @@ class GridGame(gym.Env):
         self.graph = nx.Graph()
         # Generowanie miast
         self._generate_cities()
+        self.armies: List[Army] = []
 
         self.edges = list(self.graph.edges)
 
@@ -290,6 +291,31 @@ class GridGame(gym.Env):
 
             city.draw(self.screen, self.font, self.world_to_screen)
 
+        # Rysowanie armii
+        for army in self.armies:
+            from_city = next(city for city in self.graph.nodes if city.id == army.from_city_id)
+            to_city = next(city for city in self.graph.nodes if city.id == army.to_city_id)
+
+            x1, y1 = self.world_to_screen(from_city.x, from_city.y)
+            x2, y2 = self.world_to_screen(to_city.x, to_city.y)
+
+            # Calculate position along the line (progress/total_distance)
+            t = army.progress / army.total_distance if army.total_distance > 0 else 1.0
+            dot_x = int(x1 + (x2 - x1) * t)
+            dot_y = int(y1 + (y2 - y1) * t)
+
+            # Choose color based on player
+            color = (0, 0, 0)
+            if army.player is not None:
+                idx = self.players.index(army.player)
+                color = PLAYERS_COLORS[idx % len(PLAYERS_COLORS)]
+
+            pygame.draw.circle(self.screen, color, (dot_x, dot_y), army.warriors)
+            if self.font:
+                text = self.font.render(str(army.warriors), True, (255, 255, 255))
+                rect = text.get_rect(center=(dot_x, dot_y))
+                self.screen.blit(text, rect)
+
         # Wyświetlanie informacji o wybranym mieście
         self._draw_city_info()
 
@@ -355,19 +381,32 @@ class GridGame(gym.Env):
             # Możliwa akcja tylko jeśli agent posiada from_city i ma >1 jednostek
             if from_city.player != current_player and from_city.warriors > 1:
                 return self._get_obs(), reward, False, False, {"reason": "Invalid action"}
+            
             moved_units = from_city.warriors
             from_city.warriors -= moved_units
 
-            # Walka lub przejęcie
-            if moved_units > to_city.warriors:
-                to_city.warriors = moved_units - to_city.warriors
-                to_city.player = current_player
-                reward += 1  # bonus za przejęcie
-            else:
-                to_city.warriors = to_city.warriors - moved_units
-                reward -= 0.5  # kara za przegraną walkę
+            edge_data = self.graph.get_edge_data(from_city, to_city)
+            distance = edge_data['weight'] if edge_data else 1
 
-        obs = self._get_obs()
+            self.armies.append(
+                Army(
+                    from_city_id=from_city.id,
+                    to_city_id=to_city.id,
+                    player=current_player,
+                    warriors=moved_units,
+                    total_distance=distance
+                )
+            )
+
+            # # Walka lub przejęcie
+            # if moved_units > to_city.warriors:
+            #     to_city.warriors = moved_units - to_city.warriors
+            #     to_city.player = current_player
+            #     reward += 1  # bonus za przejęcie
+            # else:
+            #     to_city.warriors = to_city.warriors - moved_units
+            #     reward -= 0.5  # kara za przegraną walkę
+
         # Sprawdź, czy wszystkie miasta są bez właściciela lub należą do bieżącego gracza
         if all(city.player is None or city.player == self.players[self.current_player_idx] for city in cities):
             done = True
@@ -381,7 +420,10 @@ class GridGame(gym.Env):
         if self.current_player_idx == 0:
             for city in cities:
                 city.step()
+            self.advance_armies()
             
+        obs = self._get_obs()
+
         if self.render_mode is not None:
             self.render()
 
@@ -392,6 +434,27 @@ class GridGame(gym.Env):
             obs, bot_reward, done, _, info = self.step(bot_action)
 
         return obs, reward, done, False, {}
+    
+    def advance_armies(self):
+        for army in self.armies:
+            army.progress += 1
+            for other in self.armies:
+                if other.from_city_id == army.to_city_id and other.to_city_id == army.from_city_id and other.player != army.player and army.progress >= other.total_distance - other.progress:
+                    damage = min(army.warriors, other.warriors)
+                    army.warriors -= damage
+                    other.warriors -= damage
+            if army.progress >= army.total_distance:
+                to_city = next(city for city in self.graph.nodes if city.id == army.to_city_id)
+                if to_city.player == army.player:
+                    to_city.warriors += army.warriors
+                else:
+                    damage = min(army.warriors, to_city.warriors)
+                    army.warriors -= damage
+                    to_city.warriors -= damage
+                    if army.warriors > 0:
+                        to_city.player = army.player
+                        to_city.warriors = army.warriors
+        self.armies = [army for army in self.armies if army.warriors > 0 and army.progress < army.total_distance]
 
     def get_available_actions(self, state):
         # Akcja pass jest zawsze dostępna
@@ -442,7 +505,8 @@ class Player:
             from_city_id, to_city_id = self.env.action_to_edge[action]
             from_city = next(city for city in self.env.graph.nodes if city.id == from_city_id)
             to_city = next(city for city in self.env.graph.nodes if city.id == to_city_id)
-            if from_city.warriors > to_city.warriors and to_city.player != self:
+            distance = self.env.graph.get_edge_data(from_city, to_city)['weight'] 
+            if from_city.warriors > to_city.warriors + distance and to_city.player != self:
                 return action
         return self.env.pass_action
 
@@ -487,3 +551,12 @@ class Player:
                         self.env.reset()
 
             clock.tick(60)
+
+class Army:
+    def __init__(self, from_city_id, to_city_id, player, warriors, total_distance):
+        self.from_city_id = from_city_id
+        self.to_city_id = to_city_id
+        self.player = player
+        self.warriors = warriors
+        self.progress = 0
+        self.total_distance = total_distance
