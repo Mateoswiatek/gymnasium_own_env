@@ -25,7 +25,7 @@ class RLAgent:
     def serialize_state(self, state):
         city_units = tuple(state["city_units"])
         owners = tuple(state["owners"])
-        armies = tuple(state["armies"])
+        armies = tuple(tuple(row) for row in state["armies"])
         return (city_units, owners, armies)
 
 
@@ -125,7 +125,7 @@ class RLAgent:
 
 
 if __name__ == "__main__":
-    env = GridGame(render_mode=None, seed=42, grid_size=30, screen_size=800, num_cities=16, num_players=2)
+    env = GridGame(render_mode=None, seed=42, grid_size=15, screen_size=800, num_cities=8, num_players=2)
     agent = RLAgent(env)
 
     agent.train(num_episodes=10000)

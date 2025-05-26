@@ -142,8 +142,12 @@ class GridGame(gym.Env):
 
         # Obserwacja: liczba jednostek i właściciele
         self.observation_space = spaces.Dict({
-            "units": spaces.Box(low=0, high=max_units, shape=(num_cities,), dtype=np.int32),
+            "city_units": spaces.Box(low=0, high=max_units, shape=(num_cities,), dtype=np.int32),
             "owners": spaces.Box(low=-1, high=1, shape=(num_cities,), dtype=np.int8),  # -1 brak właściciela, 0 agent
+            "armies": spaces.Box(
+                low=np.tile(np.array([0, 0, 0, 0, 0, 1]), (self.num_cities*2, 1)),
+                high=np.tile(np.array([num_cities-1, num_cities-1, num_players-1, max_units, self.world_size, self.world_size]), (self.num_cities*2, 1)),
+                dtype=np.int32)
         })
 
         self.current_player_idx = 0
@@ -356,11 +360,21 @@ class GridGame(gym.Env):
         owners_t = tuple(
             (self.players.index(city.player) if city.player else -1) for city in self.graph.nodes
         )
-        armies_t = tuple(
-            (army.from_city_id, army.to_city_id, army.player.id if army.player else -1, army.warriors)
-            for army in self.armies
-        )
-        return {"city_units": city_units_t, "owners": owners_t, "armies": armies_t}
+        armies_obs = []
+        for army in self.armies:
+            armies_obs.append([
+                army.from_city_id,
+                army.to_city_id,
+                army.player.id if army.player else -1,
+                army.warriors,
+                army.progress,
+                army.total_distance
+            ])
+        # Pad with zeros or dummy values
+        while len(armies_obs) < self.num_cities * 2:
+            armies_obs.append([0, 0, -1, 0, 0, 1])
+        armies_obs = np.array(armies_obs[:self.num_cities*2], dtype=np.int32)
+        return {"city_units": city_units_t, "owners": owners_t, "armies": armies_obs}
 
     def step(self, action: int):
         self.steps += 1
@@ -437,6 +451,7 @@ class GridGame(gym.Env):
             bot_player = self.players[self.current_player_idx]
             bot_action = bot_player.bot_move(obs)
             obs, bot_reward, done, _, info = self.step(bot_action)
+
 
         return obs, reward, done, False, {}
     
