@@ -4,14 +4,14 @@ from env import GridGame
 def main():
     """Funkcja główna programu."""
     # Parametry gry
-    grid_size = 20       # Rozmiar siatki NxN
+    grid_size = 8       # Rozmiar siatki NxN
     screen_size = 600    # Rozmiar okna w pikselach
-    num_cities = 16       # Liczba miast
+    num_cities = 24       # Liczba miast
     num_players = 4      # Liczba graczy
 
     # Utworzenie i uruchomienie gry
     game = GridGame(
-        seed=50,
+        seed=42,
         grid_size=grid_size,
         screen_size=screen_size,
         num_cities=num_cities,

@@ -120,12 +120,12 @@ class RLAgent:
         plt.xlabel("Epizody")
         plt.ylabel("Średnia nagroda")
         plt.grid()
-        plt.show()
         plt.savefig("learning_curve.png")
+        plt.close()
 
 
 if __name__ == "__main__":
-    env = GridGame(render_mode=None, seed=42, grid_size=8, screen_size=800, num_cities=16, num_players=2)
+    env = GridGame(render_mode=None, seed=42, grid_size=8, screen_size=800, num_cities=32, num_players=4)
     agent = RLAgent(env)
 
     agent.train(num_episodes=50000)

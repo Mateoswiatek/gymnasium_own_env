@@ -373,7 +373,7 @@ class GridGame(gym.Env):
             done = True
             reward += 100
 
-        if self.steps >= 1000:
+        if self.steps >= 100:
             done = True
 
         self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
