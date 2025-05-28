@@ -5,7 +5,7 @@ def main():
     """Funkcja główna programu."""
     # Parametry gry
     grid_size = 20       # Rozmiar siatki NxN
-    screen_size = 800    # Rozmiar okna w pikselach
+    screen_size = 600    # Rozmiar okna w pikselach
     num_cities = 16       # Liczba miast
     num_players = 4      # Liczba graczy
 

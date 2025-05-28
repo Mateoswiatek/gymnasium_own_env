@@ -244,9 +244,9 @@ class GridGame(gym.Env):
             pygame.draw.line(self.screen, (100, 100, 100), (ax, ay), (bx, by), 1)
 
             mx, my = (ax + bx) // 2, (ay + by) // 2
-            text = self.font.render(f"{data['weight']}", True, (0, 0, 0))
-            rect = text.get_rect(center=(mx, my))
-            self.screen.blit(text, rect)
+            #text = self.font.render(f"{data['weight']}", True, (0, 0, 0))
+            #rect = text.get_rect(center=(mx, my))
+            #self.screen.blit(text, rect)
 
     def _draw_game(self):
         """Rysuje siatkę planszy."""
@@ -373,7 +373,7 @@ class GridGame(gym.Env):
             done = True
             reward += 100
 
-        if self.steps >= 100:
+        if self.steps >= 1000:
             done = True
 
         self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
@@ -390,6 +390,7 @@ class GridGame(gym.Env):
             bot_player = self.players[self.current_player_idx]
             bot_action = bot_player.bot_move(obs)
             obs, bot_reward, done, _, info = self.step(bot_action)
+            reward -= bot_reward + 0.1
 
         return obs, reward, done, False, {}
 
