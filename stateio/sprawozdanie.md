@@ -1,5 +1,7 @@
 # Gra strategiczna na grafie z uczeniem ze wzmocnieniem
 
+### Autorzy: Maciej Trzaskacz i Mateusz Świątek
+
 ## Wprowadzenie
 
 Projekt przedstawia zaawansowaną implementację gry strategicznej w czasie rzeczywistym, która łączy elementy klasycznych gier strategicznych z nowoczesnymi technikami uczenia ze wzmocnieniem. System został zaprojektowany jako środowisko badawcze do testowania algorytmów sztucznej inteligencji w kontekście podejmowania strategicznych decyzji w warunkach niepełnej informacji i ograniczeń czasowych.
