@@ -54,6 +54,8 @@ class CustomNetwork(BaseFeaturesExtractor):
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
                 nn.Linear(256, 128),
                 nn.ReLU(),
                 nn.Linear(128, features_dim),
@@ -168,6 +170,8 @@ class RLExperiment:
                 if final_score > self.best_score:
                     self.best_score = final_score
                     self.best_model = model
+                    # Save the best model
+                    self.save_best_model(f"best_ppo_model_{run+1}_{param_name}.zip")
 
                 print(f"Run {run+1}: Final reward = {final_score:.2f}, Time = {train_time:.1f}s")
 
@@ -502,7 +506,7 @@ def main():
 
     # Run hyperparameter study (4 points requirement)
     print("Phase 1: Hyperparameter Study")
-    experiment.run_hyperparameter_study(hyperparams_sets, n_runs=10, total_timesteps=50_000)
+    experiment.run_hyperparameter_study(hyperparams_sets, n_runs=10, total_timesteps=75_000)
 
     # Plot learning curves
     print("\nPhase 2: Generating Learning Curves")
@@ -511,7 +515,7 @@ def main():
     # Test different network architectures (6 points requirement)
     print("\nPhase 3: Testing Network Architectures")
     best_hyperparams = hyperparams_sets[0]  # Use first config for architecture testing
-    architectures = ["simple", "deep", "wide"]
+    architectures = ["deep", "wide"]
     arch_results = experiment.test_network_architectures(best_hyperparams, architectures)
 
     # Print architecture results
@@ -523,8 +527,7 @@ def main():
     print("\nPhase 4: Deterministic Evaluation of Best Model")
     det_results = experiment.evaluate_best_model(n_episodes=20)
 
-    # Save the best model
-    experiment.save_best_model("best_ppo_model")
+    
 
     # Generate comprehensive report
     experiment.generate_report()

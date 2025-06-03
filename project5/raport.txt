@@ -1,0 +1,47 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Environment: LunarLanderContinuous-v3
+Algorithm: PPO
+
+Environment Characteristics:
+- Observation Space: Box([ -2.5        -2.5       -10.        -10.         -6.2831855 -10.
+  -0.         -0.       ], [ 2.5        2.5       10.        10.         6.2831855 10.
+  1.         1.       ], (8,), float32)
+- Action Space: Box(-1.0, 1.0, (2,), float32)
+- Continuous Actions: True
+
+Hyperparameter Configurations Tested:
+
+Config_1:
+  - learning_rate: 0.0003
+  - n_steps: 2048
+  - batch_size: 64
+  - gamma: 0.99
+  - gae_lambda: 0.95
+  - Average Final Score: -23.46 ± 142.32
+  - Average Training Time: 53.0 seconds
+
+Config_2:
+  - learning_rate: 0.0001
+  - n_steps: 1024
+  - batch_size: 32
+  - gamma: 0.995
+  - gae_lambda: 0.9
+  - Average Final Score: -11.09 ± 190.13
+  - Average Training Time: 76.0 seconds
+
+Config_3:
+  - learning_rate: 0.0005
+  - n_steps: 4096
+  - batch_size: 128
+  - gamma: 0.98
+  - gae_lambda: 0.98
+  - Average Final Score: -14.46 ± 88.03
+  - Average Training Time: 40.2 seconds
+
+Best Configuration:
+- Configuration: Config_2
+- Average Score: -11.09
+- Best Individual Score: 199.23
