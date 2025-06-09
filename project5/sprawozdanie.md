@@ -59,11 +59,9 @@ Poniżej przedstawiono krzywe uczenia dla trzech zestawów hiperparametrów. Na 
 - **Config 2:** 76.0 s
 - **Config 3:** 40.2 s
 
-Czas pojedynczego epizodu zależał od długości epizodu i ustawień hiperparametrów, ale typowo mieścił się w zakresie kilku sekund.
-
 ### Analiza wyników
 
-Na podstawie uzyskanych wyników (patrz także raport.txt) można zauważyć, że **Config 2** (learning_rate=0.0001, gamma=0.995, batch_size=32) osiągnął najwyższą średnią końcową nagrodę: **-11.09 ± 190.13**. Pozostałe konfiguracje uzyskały nieco gorsze wyniki: **Config 1**: -23.46 ± 142.32, **Config 3**: -14.46 ± 88.03. Różnice te mogą wynikać z większej stabilności uczenia przy niższym learning rate i wyższym gamma, co sprzyja lepszemu wykorzystaniu długoterminowych nagród. Warto jednak zauważyć, że odchylenia standardowe są duże, co wskazuje na znaczną zmienność wyników między uruchomieniami. Najlepszy pojedynczy wynik osiągnięto również dla Config 2 (199.23).
+Na podstawie uzyskanych wyników można zauważyć, że **Config 2** (learning_rate=0.0001, gamma=0.995, batch_size=32) osiągnął najwyższą średnią końcową nagrodę: **-11.09 ± 190.13**. Pozostałe konfiguracje uzyskały nieco gorsze wyniki: **Config 1**: -23.46 ± 142.32, **Config 3**: -14.46 ± 88.03. Różnice te mogą wynikać z większej stabilności uczenia przy niższym learning rate i wyższym gamma, co sprzyja lepszemu wykorzystaniu długoterminowych nagród. Warto jednak zauważyć, że odchylenia standardowe są duże, co wskazuje na znaczną zmienność wyników między uruchomieniami. Najlepszy pojedynczy wynik osiągnięto również dla Config 2 (199.23).
 
 Podsumowując, **Config 2** okazał się wyraźnie lepszy od pozostałych, choć różnice nie są bardzo duże. Wyniki potwierdzają, że dobór hiperparametrów ma istotny wpływ na efektywność uczenia się agenta w środowiskach ciągłych.
 
