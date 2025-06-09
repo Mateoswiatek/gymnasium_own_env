@@ -45,3 +45,14 @@ Best Configuration:
 - Configuration: Config_2
 - Average Score: -11.09
 - Best Individual Score: 199.23
+
+
+Architecture Comparison:
+deep: -154.36 ± 79.48
+wide: -133.31 ± 50.03
+
+
+Deterministic Performance:
+Average Reward: 218.04 ± 23.02
+Best Episode: 255.27
+Worst Episode: 170.73

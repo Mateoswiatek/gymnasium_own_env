@@ -327,7 +327,7 @@ class RLExperiment:
         return valid_timesteps, mean_rewards, std_rewards
 
     def test_network_architectures(self, hyperparams: Dict, architectures: List[str],
-                                   n_runs: int = 5, total_timesteps: int = 30000):
+                                   n_runs: int = 5, total_timesteps: int = 50000):
         """
         Test different network architectures
         """
@@ -338,6 +338,9 @@ class RLExperiment:
 
             scores = []
             times = []
+            all_rewards = []
+            all_timesteps = []
+
 
             for run in range(n_runs):
                 env = Monitor(gym.make(self.env_name))
@@ -355,18 +358,50 @@ class RLExperiment:
                 elif self.algorithm_name == "A2C":
                     model = A2C("MlpPolicy", env, policy_kwargs=policy_kwargs,
                                 **hyperparams, verbose=0)
+                    
+                callback = TrainingCallback()
 
                 start_time = time.time()
-                model.learn(total_timesteps=total_timesteps)
+                model.learn(total_timesteps=total_timesteps, callback=callback)
                 train_time = time.time() - start_time
 
                 mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=5)
 
                 scores.append(mean_reward)
                 times.append(train_time)
+                all_rewards.append(callback.episode_rewards)
+                all_timesteps.append(callback.timesteps)
 
                 env.close()
                 print(f"Run {run+1}: {mean_reward:.2f}")
+
+            
+            # --- Plot learning curves for this architecture ---
+            plt.figure(figsize=(8, 5))
+            # Plot all individual runs (smoothed)
+            for rewards, timesteps in zip(all_rewards, all_timesteps):
+                if len(rewards) > 0 and len(timesteps) > 0:
+                    if len(rewards) > 10:
+                        smoothed_rewards = self._smooth_data(rewards, window=min(10, len(rewards)//5))
+                        plt.plot(timesteps[:len(smoothed_rewards)], smoothed_rewards, alpha=0.3, linewidth=0.7)
+            # Plot mean and std
+            agg_timesteps, mean_rewards, std_rewards = self._aggregate_curves(all_rewards, all_timesteps, max_timesteps=total_timesteps)
+            if len(agg_timesteps) > 0:
+                plt.plot(agg_timesteps, mean_rewards, color='black', linewidth=2, label='Średnia')
+                plt.fill_between(agg_timesteps,
+                                 np.array(mean_rewards) - np.array(std_rewards),
+                                 np.array(mean_rewards) + np.array(std_rewards),
+                                 color='gray', alpha=0.2, label='Odchylenie std')
+            plt.title(f'Krzywe uczenia - architektura: {arch}')
+            plt.xlabel('Timesteps')
+            plt.ylabel('Episode Reward')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(f'learning_curve_{arch}.png', dpi=200)
+            plt.close()
+            print(f"Saved learning curve: learning_curve_{arch}.png")
+
 
             architecture_results[arch] = {
                 'scores': scores,
@@ -385,7 +420,13 @@ class RLExperiment:
         """
         if self.best_model is None:
             print("No trained model available!")
-            return None
+            try:
+                file = "project5/best_ppo_model_2_Config_1"
+                self.best_model = PPO.load(file)
+                print(f"Loaded best model from file: {file}")
+            except Exception as e:
+                print(f"Failed to load model: {e}")
+                return None
 
         print(f"\n--- Evaluating Best Model (Score: {self.best_score:.2f}) ---")
 
@@ -504,13 +545,13 @@ def main():
         }
     ]
 
-    # Run hyperparameter study (4 points requirement)
-    print("Phase 1: Hyperparameter Study")
-    experiment.run_hyperparameter_study(hyperparams_sets, n_runs=10, total_timesteps=75_000)
+    # # Run hyperparameter study (4 points requirement)
+    # print("Phase 1: Hyperparameter Study")
+    # experiment.run_hyperparameter_study(hyperparams_sets, n_runs=10, total_timesteps=75_000)
 
-    # Plot learning curves
-    print("\nPhase 2: Generating Learning Curves")
-    experiment.plot_learning_curves(save_path="learning_curves.png")
+    # # Plot learning curves
+    # print("\nPhase 2: Generating Learning Curves")
+    # experiment.plot_learning_curves(save_path="learning_curves.png")
 
     # Test different network architectures (6 points requirement)
     print("\nPhase 3: Testing Network Architectures")
@@ -530,7 +571,7 @@ def main():
     
 
     # Generate comprehensive report
-    experiment.generate_report()
+    # experiment.generate_report()
 
     print("\n" + "="*50)
     print("Experiment completed successfully!")
