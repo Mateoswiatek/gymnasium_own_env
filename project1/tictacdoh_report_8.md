@@ -23,7 +23,7 @@ W eksperymentach wykorzystano algorytm Negamax, który jest wariantem algorytmu 
 ## 3. Przeprowadzone eksperymenty
 
 Przeprowadzono serię eksperymentów mających na celu porównanie:
-- Różnych ustawień głębokości algorytmu Negamax (porównywano głębokości 1 vs 3 oraz 3 vs 5)
+- Różnych ustawień głębokości algorytmu Negamax (porównywano głębokości 2 vs 4 oraz 3 vs 5)
 - Deterministycznego i probabilistycznego wariantu gry
 
 Każdy eksperyment obejmował 100 gier między dwoma graczami AI, przy czym gracze na zmianę rozpoczynali kolejne partie.
@@ -34,7 +34,7 @@ Każdy eksperyment obejmował 100 gier między dwoma graczami AI, przy czym grac
 
 | Głębokości | Wygrane Gracz 1 | Wygrane Gracz 2 | Remisy |
 |------------|-----------------|-----------------|--------|
-| 1 vs 3 | 50 | 50 | 0 |
+| 2 vs 4 | 50 | 50 | 0 |
 | 3 vs 5 | 50 | 50 | 0 |
 | 2 vs 8 | 50 | 50 | 0 |
 
@@ -42,9 +42,9 @@ Każdy eksperyment obejmował 100 gier między dwoma graczami AI, przy czym grac
 
 | Głębokości | Wygrane Gracz 1 | Wygrane Gracz 2 | Remisy | Nieudane ruchy |
 |------------|-----------------|-----------------|--------|----------------|
-| 1 vs 3 | 36 | 50 | 14 | 151 |
-| 3 vs 5 | 40 | 48 | 12 | 160 |
-| 2 vs 8 | 33 | 51 | 16 | 162 |
+| 2 vs 4 | 35 | 50 | 15 | 179 |
+| 3 vs 5 | 38 | 49 | 13 | 158 |
+| 2 vs 8 | 31 | 52 | 17 | 162 |
 
 ## 5. Analiza wyników
 

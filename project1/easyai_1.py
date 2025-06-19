@@ -182,7 +182,7 @@ def run_experiment(depth1, depth2, num_games=100, probabilistic=True):
 
 def compare_depths_and_variants():
     """Compare different depth settings in both deterministic and probabilistic variants."""
-    depth_pairs = [(2, 4), (3, 5), (2, 8)]
+    depth_pairs = [(1, 3), (3, 5), (2, 8)]
     num_games = 100
 
     results = []
