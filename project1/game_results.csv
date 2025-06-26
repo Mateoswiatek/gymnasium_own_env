@@ -1,0 +1,11 @@
+player1_wins,player2_wins,draws,failed_moves,total_moves,algo1,algo2,variant
+25,25,0,0,400,Negamax_3,Negamax_5,Deterministic
+17,25,8,80,385,Negamax_3,Negamax_5,Probabilistic
+25,25,0,0,350,Negamax_3,Negamax_AB_3,Deterministic
+21,23,6,85,443,Negamax_3,Negamax_AB_3,Probabilistic
+25,25,0,0,400,Negamax_AB_3,Negamax_AB_5,Deterministic
+20,17,13,73,429,Negamax_AB_3,Negamax_AB_5,Probabilistic
+25,25,0,0,350,Negamax_AB_3,ExpectiMinimax_AB_3,Deterministic
+16,25,9,92,407,Negamax_AB_3,ExpectiMinimax_AB_3,Probabilistic
+25,25,0,0,350,Negamax_AB_5,ExpectiMinimax_AB_5,Deterministic
+20,21,9,70,387,Negamax_AB_5,ExpectiMinimax_AB_5,Probabilistic
