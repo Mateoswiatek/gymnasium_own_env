@@ -593,11 +593,11 @@ def main():
 
     tester = AIPerformanceTester()
 
-    print("🔬 Uruchamianie eksperymentów...")
+    print("Uruchamianie eksperymentów...")
     results, time_results = tester.run_comprehensive_experiment(num_games=50)
 
     # Stwórz wizualizacje
-    print("📊 Tworzenie wizualizacji...")
+    print("Tworzenie wizualizacji...")
     create_comprehensive_visualizations(results, time_results)
 
     # Generuj raport
@@ -615,8 +615,7 @@ def main():
     results_df.to_csv("game_results.csv", index=False)
     time_df.to_csv("time_results.csv", index=False)
 
-    print("✅ Wszystkie eksperymenty zakończone!")
-    print("📄 Pliki wygenerowane:")
+    print("Wygenerowane pliki:")
     print("   - comprehensive_tictacdoh_report.md (główny raport)")
     print("   - comprehensive_tictacdoh_results.png (wykresy główne)")
     print("   - move_failure_rates.png (wskaźniki niepowodzeń)")
